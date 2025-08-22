@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { prisma } from '@/lib/prisma';
 
-// POST /api/events/[id]/register - Register for an event
+// POST /api/events/[id]/register - Register for event
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -14,13 +14,16 @@ export async function POST(
     if (!session?.user?.email) {
       return NextResponse.json({
         success: false,
-        error: 'Authentication required'
+        error: 'Unauthorized'
       }, { status: 401 });
     }
 
     const eventId = params.id;
-    const body = await request.json();
-    const { answers = [] } = body;
+    const { answers } = await request.json();
+
+    console.log('Registration attempt for event:', eventId);
+    console.log('User:', session.user.email);
+    console.log('Answers received:', answers);
 
     // Get user from database
     const user = await prisma.user.findUnique({
@@ -35,19 +38,10 @@ export async function POST(
       }, { status: 404 });
     }
 
-    // Get event details
+    // Get event and check if it exists
     const event = await prisma.event.findUnique({
       where: { id: eventId },
-      select: {
-        id: true,
-        title: true,
-        startDate: true,
-        endDate: true,
-        maxAttendees: true,
-        requireApproval: true,
-        isPublic: true,
-        organizerId: true,
-        attendeeCount: true,
+      include: {
         questions: {
           orderBy: { order: 'asc' }
         }
@@ -61,233 +55,127 @@ export async function POST(
       }, { status: 404 });
     }
 
-    // Validation checks
-    const validationErrors = [];
-
     // Check if event is public or user has access
-    if (!event.isPublic && event.organizerId !== user.id) {
+    if (!event.isPublic) {
       return NextResponse.json({
         success: false,
         error: 'This event is private'
       }, { status: 403 });
     }
 
-    // Check if user is trying to register for their own event
-    if (event.organizerId === user.id) {
-      return NextResponse.json({
-        success: false,
-        error: 'You cannot register for your own event'
-      }, { status: 400 });
-    }
-
-    // Check if event has already started
+    // Check if event has started
     if (new Date(event.startDate) <= new Date()) {
       return NextResponse.json({
         success: false,
-        error: 'Registration is closed - event has already started'
+        error: 'Registration is closed for this event'
       }, { status: 400 });
     }
 
-    // Check if event has ended
-    if (new Date(event.endDate) <= new Date()) {
-      return NextResponse.json({
-        success: false,
-        error: 'Cannot register for past events'
-      }, { status: 400 });
-    }
-
-    // Check if user already registered
-    const existingRegistration = await prisma.registration.findFirst({
+    // Check if user is already registered
+    const existingRegistration = await prisma.registration.findUnique({
       where: {
-        eventId: eventId,
-        userId: user.id
+        userId_eventId: {
+          userId: user.id,
+          eventId: eventId
+        }
       }
     });
 
     if (existingRegistration) {
       return NextResponse.json({
         success: false,
-        error: 'You are already registered for this event',
-        data: {
-          registrationStatus: existingRegistration.status
-        }
+        error: 'You are already registered for this event'
       }, { status: 400 });
     }
 
-    // Check capacity (only for approved registrations)
-    if (event.maxAttendees) {
-      const approvedRegistrations = await prisma.registration.count({
-        where: {
-          eventId: eventId,
-          status: 'APPROVED'
-        }
-      });
-
-      if (approvedRegistrations >= event.maxAttendees) {
-        // If event requires approval, put on waitlist
-        // If not, reject registration
-        if (!event.requireApproval) {
-          return NextResponse.json({
-            success: false,
-            error: 'Event is at full capacity'
-          }, { status: 400 });
-        }
-      }
+    // Check capacity
+    if (event.maxAttendees && event.attendeeCount >= event.maxAttendees) {
+      return NextResponse.json({
+        success: false,
+        error: 'This event is at full capacity'
+      }, { status: 400 });
     }
 
     // Validate required questions
-    const requiredQuestions = event.questions.filter(q => q.required);
-    for (const question of requiredQuestions) {
-      const answer = answers.find((a: any) => a.questionId === question.id);
-      if (!answer || !answer.answer || answer.answer.trim() === '') {
-        validationErrors.push(`Answer required for: ${question.text}`);
-      }
-    }
-
-    // Validate answer formats based on question type
-    for (const answer of answers) {
-      const question = event.questions.find(q => q.id === answer.questionId);
-      if (!question) continue;
-
-      if (answer.answer && answer.answer.trim() !== '') {
-        switch (question.type) {
-          case 'EMAIL':
-            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            if (!emailRegex.test(answer.answer)) {
-              validationErrors.push(`Invalid email format for: ${question.text}`);
-            }
-            break;
-          case 'PHONE':
-            const phoneRegex = /^[\+]?[1-9][\d]{0,15}$/;
-            if (!phoneRegex.test(answer.answer.replace(/\s|-|\(|\)/g, ''))) {
-              validationErrors.push(`Invalid phone format for: ${question.text}`);
-            }
-            break;
-          case 'SELECT':
-          case 'RADIO':
-            if (question.options && !question.options.includes(answer.answer)) {
-              validationErrors.push(`Invalid option selected for: ${question.text}`);
-            }
-            break;
-          case 'CHECKBOX':
-            try {
-              const selectedOptions = JSON.parse(answer.answer);
-              if (!Array.isArray(selectedOptions)) {
-                throw new Error('Invalid format');
-              }
-              for (const option of selectedOptions) {
-                if (question.options && !question.options.includes(option)) {
-                  validationErrors.push(`Invalid option selected for: ${question.text}`);
-                }
-              }
-            } catch {
-              validationErrors.push(`Invalid format for: ${question.text}`);
-            }
-            break;
-        }
-      }
-    }
-
-    if (validationErrors.length > 0) {
-      return NextResponse.json({
-        success: false,
-        error: 'Validation failed',
-        details: validationErrors
-      }, { status: 400 });
-    }
-
-    // Determine initial status
-    let initialStatus: 'PENDING' | 'APPROVED' | 'WAITLIST' = 'APPROVED';
-    
-    if (event.requireApproval) {
-      initialStatus = 'PENDING';
-    } else if (event.maxAttendees) {
-      const approvedCount = await prisma.registration.count({
-        where: {
-          eventId: eventId,
-          status: 'APPROVED'
-        }
-      });
+    if (event.questions && event.questions.length > 0) {
+      const answersMap = new Map(answers?.map((a: any) => [a.questionId, a.answer]) || []);
       
-      if (approvedCount >= event.maxAttendees) {
-        initialStatus = 'WAITLIST';
+      for (const question of event.questions) {
+        if (question.required) {
+          const answer = answersMap.get(question.id);
+          if (!answer || answer.trim() === '') {
+            return NextResponse.json({
+              success: false,
+              error: `Please answer the required question: ${question.text}`
+            }, { status: 400 });
+          }
+        }
       }
     }
 
-    // Create registration in transaction
+    // Create registration with answers in a transaction
     const result = await prisma.$transaction(async (tx) => {
-      // Create registration
+      // Create the registration
       const registration = await tx.registration.create({
         data: {
           userId: user.id,
           eventId: eventId,
-          status: initialStatus,
-          createdAt: new Date(),
-          updatedAt: new Date()
+          status: event.requireApproval ? 'PENDING' : 'APPROVED'
         }
       });
 
-      // Create answers if provided
-      if (answers.length > 0) {
+      console.log('Registration created:', registration.id);
+
+      // Create answers if provided - Use registrationAnswer instead of answer
+      if (answers && answers.length > 0) {
         const answerData = answers
-          .filter((answer: any) => answer.questionId && answer.answer)
+          .filter((answer: any) => answer.answer && answer.answer.trim() !== '')
           .map((answer: any) => ({
             registrationId: registration.id,
             questionId: answer.questionId,
-            answer: answer.answer.toString()
+            answer: answer.answer.trim()
           }));
 
         if (answerData.length > 0) {
-          await tx.answer.createMany({
+          await tx.registrationAnswer.createMany({
             data: answerData
           });
+          console.log('Answers created:', answerData.length);
         }
       }
 
-      // Update event attendee count if approved
-      if (initialStatus === 'APPROVED') {
+      // Update attendee count if automatically approved
+      if (!event.requireApproval) {
         await tx.event.update({
           where: { id: eventId },
-          data: {
-            attendeeCount: {
-              increment: 1
-            }
-          }
+          data: { attendeeCount: { increment: 1 } }
         });
+        console.log('Attendee count updated');
       }
 
       return registration;
     });
 
-    // Prepare response message
-    let message = '';
-    switch (initialStatus) {
-      case 'APPROVED':
-        message = 'Successfully registered for the event!';
-        break;
-      case 'PENDING':
-        message = 'Registration submitted! Waiting for organizer approval.';
-        break;
-      case 'WAITLIST':
-        message = 'Added to waitlist. You\'ll be notified if a spot opens up.';
-        break;
-    }
+    console.log('Registration completed successfully');
+
+    const message = event.requireApproval 
+      ? 'Registration submitted! You will receive an email once the organizer reviews your application.'
+      : 'Registration successful! You will receive a confirmation email shortly.';
 
     return NextResponse.json({
       success: true,
+      message,
       data: {
         registrationId: result.id,
-        status: initialStatus,
-        message: message
-      },
-      message: message
-    }, { status: 201 });
+        status: result.status
+      }
+    });
 
   } catch (error) {
-    console.error('Error registering for event:', error);
+    console.error('Registration error:', error);
     return NextResponse.json({
       success: false,
-      error: 'Internal server error'
+      error: 'Registration failed. Please try again.'
     }, { status: 500 });
   }
 }
@@ -303,7 +191,7 @@ export async function GET(
     if (!session?.user?.email) {
       return NextResponse.json({
         success: false,
-        error: 'Authentication required'
+        error: 'Unauthorized'
       }, { status: 401 });
     }
 
@@ -322,52 +210,43 @@ export async function GET(
       }, { status: 404 });
     }
 
-    // Check if user is registered
-    const registration = await prisma.registration.findFirst({
+    // Check registration status
+    const registration = await prisma.registration.findUnique({
       where: {
-        eventId: eventId,
-        userId: user.id
+        userId_eventId: {
+          userId: user.id,
+          eventId: eventId
+        }
       },
       include: {
         answers: {
           include: {
-            question: true
+            question: {
+              select: {
+                id: true,
+                text: true,
+                type: true,
+                required: true
+              }
+            }
           }
         }
       }
     });
 
-    if (!registration) {
-      return NextResponse.json({
-        success: true,
-        data: {
-          isRegistered: false
-        }
-      });
-    }
-
     return NextResponse.json({
       success: true,
       data: {
-        isRegistered: true,
-        registration: {
-          id: registration.id,
-          status: registration.status,
-          createdAt: registration.createdAt.toISOString(),
-          answers: registration.answers.map(answer => ({
-            questionId: answer.questionId,
-            questionText: answer.question.text,
-            answer: answer.answer
-          }))
-        }
+        isRegistered: !!registration,
+        registration: registration || null
       }
     });
 
   } catch (error) {
-    console.error('Error checking registration:', error);
+    console.error('Error checking registration status:', error);
     return NextResponse.json({
       success: false,
-      error: 'Internal server error'
+      error: 'Failed to check registration status'
     }, { status: 500 });
   }
 }

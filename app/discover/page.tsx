@@ -16,7 +16,37 @@ import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
 import { useEvents } from "@/hooks/useEvents";
-import { Event } from "@/lib/api";
+
+interface Event {
+  id: string;
+  title: string;
+  description: string;
+  startDate: string;
+  endDate: string;
+  location: string;
+  venue?: string;
+  eventType: string;
+  category: string;
+  attendeeCount: number;
+  maxAttendees?: number;
+  price: number;
+  organizerId: string;
+  image?: string;
+  tags: string[];
+  isPublic: boolean;
+  requireApproval: boolean;
+  createdAt: string;
+  updatedAt: string;
+  organizer: {
+    id: string;
+    name: string;
+    email: string;
+    image?: string;
+    bio?: string;
+    location?: string;
+    website?: string;
+  };
+}
 
 export default function DiscoverPage() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -24,7 +54,7 @@ export default function DiscoverPage() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [sortBy, setSortBy] = useState("date");
 
-  // Use the API hook
+  // Use the API hook with correct parameters
   const { events, loading, error, refetch } = useEvents({
     search: searchQuery,
     category: categoryFilter === "all" ? undefined : categoryFilter,
@@ -292,6 +322,13 @@ function EventCard({ event }: { event: Event }) {
             {event.attendeeCount} attending
             {event.maxAttendees && ` • ${event.maxAttendees - event.attendeeCount} spots left`}
           </div>
+        </div>
+
+        {/* Price */}
+        <div className="mt-3">
+          <span className="text-lg font-bold text-white">
+            {event.price === 0 ? "Free" : `$${event.price}`}
+          </span>
         </div>
 
         {/* Organizer */}

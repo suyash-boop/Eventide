@@ -160,6 +160,8 @@ export default function EventRegistrationForm({ event, onSuccess, onCancel }: Re
           })).filter(answer => answer.answer.trim() !== '')
         : [];
 
+      console.log('Submitting registration with answers:', formattedAnswers);
+
       const response = await fetch(`/api/events/${event.id}/register`, {
         method: 'POST',
         headers: {
@@ -170,7 +172,9 @@ export default function EventRegistrationForm({ event, onSuccess, onCancel }: Re
         }),
       });
 
+      console.log('Response status:', response.status);
       const data = await response.json();
+      console.log('Response data:', data);
 
       if (!response.ok) {
         throw new Error(data.error || 'Registration failed');

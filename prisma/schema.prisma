@@ -13,15 +13,14 @@ model Account {
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String?
+  access_token      String?
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String?
   session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
 }
@@ -35,22 +34,21 @@ model Session {
 }
 
 model User {
-  id            String    @id @default(cuid())
+  id            String         @id @default(cuid())
   name          String?
-  email         String    @unique
+  email         String         @unique
   emailVerified DateTime?
   image         String?
   bio           String?
   location      String?
   website       String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   accounts      Account[]
   sessions      Session[]
   events        Event[]
   registrations Registration[]
-  
+
   @@map("users")
 }
 
@@ -63,79 +61,75 @@ model VerificationToken {
 }
 
 model Event {
-  id              String      @id @default(cuid())
+  id              String         @id @default(cuid())
   title           String
-  description     String      @db.Text
+  description     String
   location        String
   venue           String?
-  eventType       EventType   @default(IN_PERSON)
+  eventType       EventType      @default(IN_PERSON)
   category        String
-  attendeeCount   Int         @default(0)
+  attendeeCount   Int            @default(0)
   maxAttendees    Int?
-  price           Float       @default(0)
+  price           Float          @default(0)
   image           String?
-  isPublic        Boolean     @default(true)
-  requireApproval Boolean     @default(false)
-  tags            String[]    @default([])
+  isPublic        Boolean        @default(true)
+  requireApproval Boolean        @default(false)
+  tags            String[]       @default([])
   startDate       DateTime
   endDate         DateTime
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-
-  organizer     User           @relation(fields: [organizerId], references: [id], onDelete: Cascade)
-  organizerId   String
-  registrations Registration[]
-  questions     Question[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  organizerId     String
+  organizer       User           @relation(fields: [organizerId], references: [id], onDelete: Cascade)
+  questions       Question[]
+  registrations   Registration[]
 
   @@map("events")
 }
 
 model Registration {
-  id        String             @id @default(cuid())
-  status    RegistrationStatus @default(PENDING)
-  answers   Answer[]
-  createdAt DateTime           @default(now())
-  updatedAt DateTime           @updatedAt
-
-  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId  String
-  event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  eventId String
+  id        String               @id @default(cuid())
+  status    RegistrationStatus   @default(PENDING)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  userId    String
+  eventId   String
+  answers   RegistrationAnswer[]
+  event     Event                @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, eventId])
   @@map("registrations")
 }
 
 model Question {
-  id          String       @id @default(cuid())
-  text        String
-  type        QuestionType @default(TEXT)
-  required    Boolean      @default(false)
-  options     String[]     @default([])
-  order       Int          @default(0)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-
-  event   Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  eventId String
-  answers Answer[]
+  id        String               @id @default(cuid())
+  text      String
+  type      QuestionType         @default(TEXT)
+  required  Boolean              @default(false)
+  options   String[]             @default([])
+  order     Int                  @default(0)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  eventId   String
+  event     Event                @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  answers   RegistrationAnswer[]
 
   @@map("questions")
 }
 
-model Answer {
-  id         String   @id @default(cuid())
-  value      String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+model RegistrationAnswer {
+  id             String       @id @default(cuid())
+  answer         String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
   registrationId String
-  question       Question     @relation(fields: [questionId], references: [id], onDelete: Cascade)
   questionId     String
+  question       Question     @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  registration   Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
 
   @@unique([registrationId, questionId])
-  @@map("answers")
+  @@map("registration_answers")
 }
 
 enum EventType {
@@ -146,11 +140,12 @@ enum EventType {
 
 enum QuestionType {
   TEXT
-  TEXTAREA
-  MULTIPLE_CHOICE
-  CHECKBOX
   EMAIL
-  NUMBER
+  PHONE
+  TEXTAREA
+  SELECT
+  RADIO
+  CHECKBOX
 }
 
 enum RegistrationStatus {

@@ -19,8 +19,14 @@ export async function GET(
             id: true,
             name: true,
             email: true,
-            image: true
+            image: true,
+            bio: true,
+            location: true,
+            website: true
           }
+        },
+        questions: {
+          orderBy: { order: 'asc' }
         }
       }
     });
@@ -32,17 +38,7 @@ export async function GET(
       }, { status: 404 });
     }
 
-    // Check if event is public or if user is the organizer
-    const session = await getServerSession(authOptions);
-    const isOrganizer = session?.user?.email === event.organizer.email;
-
-    if (!event.isPublic && !isOrganizer) {
-      return NextResponse.json({
-        success: false,
-        error: 'Event not found'
-      }, { status: 404 });
-    }
-
+    // Transform the response
     const transformedEvent = {
       id: event.id,
       title: event.title,
@@ -63,12 +59,17 @@ export async function GET(
       requireApproval: event.requireApproval,
       createdAt: event.createdAt.toISOString(),
       updatedAt: event.updatedAt.toISOString(),
-      organizer: event.organizer
+      organizer: event.organizer,
+      questions: event.questions || [] // Make sure questions are included
     };
+
+    console.log('Event fetched with questions:', transformedEvent.questions); // Debug log
 
     return NextResponse.json({
       success: true,
-      data: { event: transformedEvent }
+      data: {
+        event: transformedEvent
+      }
     });
 
   } catch (error) {

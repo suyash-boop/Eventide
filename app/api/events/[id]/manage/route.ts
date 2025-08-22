@@ -48,6 +48,9 @@ export async function GET(
             image: true
           }
         },
+        questions: {
+          orderBy: { order: 'asc' }
+        },
         registrations: {
           include: {
             user: {
@@ -87,6 +90,20 @@ export async function GET(
       }, { status: 404 });
     }
 
+    // Transform registrations to include answers properly
+    const transformedRegistrations = event.registrations.map(registration => ({
+      id: registration.id,
+      status: registration.status,
+      createdAt: registration.createdAt.toISOString(),
+      updatedAt: registration.updatedAt.toISOString(),
+      user: registration.user,
+      answers: registration.answers.map(answer => ({
+        id: answer.id,
+        answer: answer.answer,
+        question: answer.question
+      }))
+    }));
+
     // Transform the response
     const transformedEvent = {
       id: event.id,
@@ -108,33 +125,20 @@ export async function GET(
       requireApproval: event.requireApproval,
       createdAt: event.createdAt.toISOString(),
       updatedAt: event.updatedAt.toISOString(),
-      organizer: event.organizer
+      organizer: event.organizer,
+      questions: event.questions || [],
+      registrations: transformedRegistrations
     };
-
-    const transformedRegistrations = event.registrations.map(registration => ({
-      id: registration.id,
-      status: registration.status,
-      createdAt: registration.createdAt.toISOString(),
-      updatedAt: registration.updatedAt.toISOString(),
-      user: registration.user,
-      answers: registration.answers.map(answer => ({
-        id: answer.id,
-        questionId: answer.questionId,
-        answer: answer.answer,
-        question: answer.question
-      }))
-    }));
 
     return NextResponse.json({
       success: true,
       data: {
-        event: transformedEvent,
-        registrations: transformedRegistrations
+        event: transformedEvent
       }
     });
 
   } catch (error) {
-    console.error('Error fetching event management data:', error);
+    console.error('Error fetching event for management:', error);
     return NextResponse.json({
       success: false,
       error: 'Internal server error'

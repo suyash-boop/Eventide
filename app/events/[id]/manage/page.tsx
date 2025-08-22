@@ -60,6 +60,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import Link from "next/link";
+import QuestionManager from "@/components/QuestionManager";
 
 interface Event {
   id: string;
@@ -81,6 +82,8 @@ interface Event {
   requireApproval: boolean;
   createdAt: string;
   updatedAt: string;
+  registrations?: Registration[]; // Add this line
+  questions?: Question[]; // Add this if missing
 }
 
 interface Registration {
@@ -174,10 +177,16 @@ export default function EventManagePage({ params }: EventManagePageProps) {
       }
       
       const eventData = await eventResponse.json();
+      console.log('Full API response:', eventData); // Debug log
+      
       if (eventData.success) {
+        console.log('Setting event:', eventData.data.event);
+        console.log('Setting registrations:', eventData.data.event.registrations); // Check this
+        
         setEvent(eventData.data.event);
         setEditingEvent(eventData.data.event);
-        setRegistrations(eventData.data.registrations || []);
+        // Fix: Get registrations from event.registrations, not a separate field
+        setRegistrations(eventData.data.event.registrations || []);
       }
       
     } catch (error) {
@@ -347,6 +356,17 @@ export default function EventManagePage({ params }: EventManagePageProps) {
     return new Date(dateString).toISOString().slice(0, 16);
   };
 
+  useEffect(() => {
+    console.log('Event management - Event:', event);
+    console.log('Event management - Questions:', event?.questions);
+  }, [event]);
+
+  useEffect(() => {
+    console.log('Event data:', event);
+    console.log('Registrations:', event?.registrations);
+    console.log('Registrations count:', event?.registrations?.length);
+  }, [event]);
+
   if (status === "loading" || loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
@@ -385,46 +405,44 @@ export default function EventManagePage({ params }: EventManagePageProps) {
     <div className="min-h-screen bg-black">
       <div className="container mx-auto px-4 py-8 max-w-7xl">
         {/* Header */}
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-8">
-          <div className="mb-4 lg:mb-0">
-            <div className="flex items-center gap-2 text-gray-400 text-sm mb-2">
-              <Link href="/my-events" className="hover:text-white">My Events</Link>
-              <span>/</span>
-              <span>Manage Event</span>
-            </div>
-            <h1 className="text-3xl font-bold text-white">{event.title}</h1>
-            <div className="flex items-center gap-4 mt-2 text-gray-400">
-              <div className="flex items-center gap-1">
-                <Calendar className="w-4 h-4" />
-                <span>{formatDate(event.startDate)}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <MapPin className="w-4 h-4" />
-                <span>{event.location}</span>
-              </div>
-              <Badge variant="outline" className="border-zinc-700 text-zinc-300">
-                {event.category}
-              </Badge>
-            </div>
+        <div className="mb-8">
+          <div className="flex items-center gap-2 text-gray-400 text-sm mb-2">
+            <Link href="/my-events" className="hover:text-white">My Events</Link>
+            <span>/</span>
+            <span>Manage Event</span>
           </div>
-          
-          <div className="flex gap-3">
-            <Button asChild variant="outline" className="border-zinc-700 text-white hover:bg-zinc-800">
-              <Link href={`/events/${event.id}`}>
-                <Eye className="w-4 h-4 mr-2" />
-                View Public Page
-              </Link>
+          <h1 className="text-3xl font-bold text-white">{event.title}</h1>
+          <div className="flex items-center gap-4 mt-2 text-gray-400">
+            <div className="flex items-center gap-1">
+              <Calendar className="w-4 h-4" />
+              <span>{formatDate(event.startDate)}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <MapPin className="w-4 h-4" />
+              <span>{event.location}</span>
+            </div>
+            <Badge variant="outline" className="border-zinc-700 text-zinc-300">
+              {event.category}
+            </Badge>
+          </div>
+        </div>
+        
+        <div className="flex gap-3 mb-8">
+          <Button asChild variant="outline" className="border-zinc-700 text-white hover:bg-zinc-800">
+            <Link href={`/events/${event.id}`}>
+              <Eye className="w-4 h-4 mr-2" />
+              View Public Page
+            </Link>
+          </Button>
+          {!isEditing && (
+            <Button 
+              onClick={() => setIsEditing(true)}
+              className="bg-white text-black hover:bg-gray-200"
+            >
+              <Edit3 className="w-4 h-4 mr-2" />
+              Edit Event
             </Button>
-            {!isEditing && (
-              <Button 
-                onClick={() => setIsEditing(true)}
-                className="bg-white text-black hover:bg-gray-200"
-              >
-                <Edit3 className="w-4 h-4 mr-2" />
-                Edit Event
-              </Button>
-            )}
-          </div>
+          )}
         </div>
 
         {/* Stats Cards */}
@@ -506,16 +524,11 @@ export default function EventManagePage({ params }: EventManagePageProps) {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="bg-zinc-900/50 border border-zinc-800/50">
-            <TabsTrigger value="details" className="data-[state=active]:bg-zinc-800">
-              Event Details
-            </TabsTrigger>
-            <TabsTrigger value="guests" className="data-[state=active]:bg-zinc-800">
-              Guests ({stats.total})
-            </TabsTrigger>
-            <TabsTrigger value="settings" className="data-[state=active]:bg-zinc-800">
-              Settings
-            </TabsTrigger>
+          <TabsList className="grid grid-cols-4 w-full max-w-md bg-zinc-800/50">
+            <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="guests">Guests</TabsTrigger>
+            <TabsTrigger value="questions">Questions</TabsTrigger>
+            <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
 
           {/* Event Details Tab */}
@@ -897,193 +910,216 @@ export default function EventManagePage({ params }: EventManagePageProps) {
             <Card className="bg-zinc-900/40 border-zinc-800/50">
               <CardContent className="p-0">
                 <div className="space-y-0">
-                  {filteredRegistrations.map((registration) => (
-                    <div key={registration.id} className="flex items-center justify-between p-6 border-b border-zinc-800/50 last:border-b-0 hover:bg-zinc-800/20 transition-colors">
-                      <div className="flex items-center gap-4">
-                        <Avatar className="w-12 h-12">
-                          <AvatarImage src={registration.user.image} />
-                          <AvatarFallback className="bg-zinc-700 text-white">
-                            {registration.user.name.charAt(0).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <h4 className="font-semibold text-white">{registration.user.name}</h4>
-                            {registration.user.bio && (
-                              <Info className="w-4 h-4 text-gray-400" />
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 text-gray-400 text-sm">
-                            <Mail className="w-3 h-3" />
-                            <span>{registration.user.email}</span>
-                          </div>
-                          {registration.user.location && (
-                            <div className="flex items-center gap-2 text-gray-400 text-sm">
-                              <MapPin className="w-3 h-3" />
-                              <span>{registration.user.location}</span>
-                            </div>
-                          )}
-                          <p className="text-gray-500 text-xs mt-1">
-                            Registered {formatDate(registration.createdAt)}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-4">
-                        <div className="flex items-center gap-2">
-                          {getStatusIcon(registration.status)}
-                          <Badge className={`${getStatusColor(registration.status)} text-white`}>
-                            {registration.status}
-                          </Badge>
-                        </div>
-
-                        {registration.status === 'PENDING' && (
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => handleRegistrationAction(registration.id, 'approve')}
-                              disabled={actionLoading === registration.id}
-                              className="bg-green-600 hover:bg-green-700 text-white"
-                            >
-                              {actionLoading === registration.id ? (
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                              ) : (
-                                <UserCheck className="w-3 h-3" />
-                              )}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleRegistrationAction(registration.id, 'reject')}
-                              disabled={actionLoading === registration.id}
-                              className="border-red-700 text-red-400 hover:bg-red-900/20"
-                            >
-                              <UserX className="w-3 h-3" />
-                            </Button>
-                          </div>
-                        )}
-
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              className="text-gray-400 hover:text-white"
-                              onClick={() => setSelectedUser(registration)}
-                            >
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent className="bg-zinc-900 border-zinc-800 text-white max-w-2xl">
-                            <DialogHeader>
-                              <DialogTitle className="flex items-center gap-3">
-                                <Avatar className="w-12 h-12">
-                                  <AvatarImage src={registration.user.image} />
-                                  <AvatarFallback className="bg-zinc-700 text-white">
-                                    {registration.user.name.charAt(0).toUpperCase()}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div>
-                                  <h3 className="text-xl font-semibold">{registration.user.name}</h3>
-                                  <p className="text-gray-400">{registration.user.email}</p>
-                                </div>
-                              </DialogTitle>
-                            </DialogHeader>
-                            
-                            <div className="space-y-4">
-                              {registration.user.bio && (
-                                <div>
-                                  <Label className="text-gray-400">Bio</Label>
-                                  <p className="text-white mt-1">{registration.user.bio}</p>
-                                </div>
-                              )}
-                              
-                              {registration.user.location && (
-                                <div>
-                                  <Label className="text-gray-400">Location</Label>
-                                  <p className="text-white mt-1">{registration.user.location}</p>
-                                </div>
-                              )}
-
-                              <div>
-                                <Label className="text-gray-400">Registration Status</Label>
-                                <div className="flex items-center gap-2 mt-1">
-                                  {getStatusIcon(registration.status)}
-                                  <Badge className={`${getStatusColor(registration.status)} text-white`}>
-                                    {registration.status}
-                                  </Badge>
-                                </div>
-                              </div>
-
-                              <div>
-                                <Label className="text-gray-400">Registration Date</Label>
-                                <p className="text-white mt-1">{formatDate(registration.createdAt)}</p>
-                              </div>
-
-                              {registration.answers && registration.answers.length > 0 && (
-                                <div>
-                                  <Label className="text-gray-400">Registration Answers</Label>
-                                  <div className="space-y-3 mt-2">
-                                    {registration.answers.map((answer) => (
-                                      <div key={answer.id} className="p-3 bg-zinc-800/50 rounded-lg">
-                                        <p className="text-sm text-gray-400 mb-1">{answer.question.text}</p>
-                                        <p className="text-white">{answer.answer}</p>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-
-                            <DialogFooter>
-                              <div className="flex gap-2 w-full">
-                                {registration.status === 'PENDING' && (
-                                  <>
-                                    <Button
-                                      onClick={() => handleRegistrationAction(registration.id, 'approve')}
-                                      disabled={actionLoading === registration.id}
-                                      className="bg-green-600 hover:bg-green-700 text-white flex-1"
-                                    >
-                                      <UserCheck className="w-4 h-4 mr-2" />
-                                      Approve
-                                    </Button>
-                                    <Button
-                                      variant="outline"
-                                      onClick={() => handleRegistrationAction(registration.id, 'reject')}
-                                      disabled={actionLoading === registration.id}
-                                      className="border-red-700 text-red-400 hover:bg-red-900/20 flex-1"
-                                    >
-                                      <UserX className="w-4 h-4 mr-2" />
-                                      Reject
-                                    </Button>
-                                  </>
-                                )}
-                                <Button
-                                  variant="outline"
-                                  className="border-zinc-700 text-white hover:bg-zinc-800"
-                                >
-                                  <Mail className="w-4 h-4 mr-2" />
-                                  Send Message
-                                </Button>
-                              </div>
-                            </DialogFooter>
-                          </DialogContent>
-                        </Dialog>
-                      </div>
-                    </div>
-                  ))}
-                  
-                  {filteredRegistrations.length === 0 && (
+                  {registrations.length === 0 ? (
                     <div className="text-center py-12">
                       <Users className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-                      <p className="text-gray-400">
-                        {registrations.length === 0 ? 'No registrations yet' : 'No registrations match your filters'}
-                      </p>
+                      <p className="text-gray-400">No registrations yet</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-0">
+                      {filteredRegistrations.map((registration) => (
+                        <div key={registration.id} className="flex items-center justify-between p-6 border-b border-zinc-800/50 last:border-b-0 hover:bg-zinc-800/20 transition-colors">
+                          <div className="flex items-center gap-4">
+                            <Avatar className="w-12 h-12">
+                              <AvatarImage src={registration.user.image} />
+                              <AvatarFallback className="bg-zinc-700 text-white">
+                                {registration.user.name.charAt(0).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-semibold text-white">{registration.user.name}</h4>
+                                {registration.user.bio && (
+                                  <Info className="w-4 h-4 text-gray-400" />
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 text-gray-400 text-sm">
+                                <Mail className="w-3 h-3" />
+                                <span>{registration.user.email}</span>
+                              </div>
+                              {registration.user.location && (
+                                <div className="flex items-center gap-2 text-gray-400 text-sm">
+                                  <MapPin className="w-3 h-3" />
+                                  <span>{registration.user.location}</span>
+                                </div>
+                              )}
+                              <p className="text-gray-500 text-xs mt-1">
+                                Registered {formatDate(registration.createdAt)}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-4">
+                            <div className="flex items-center gap-2">
+                              {getStatusIcon(registration.status)}
+                              <Badge className={`${getStatusColor(registration.status)} text-white`}>
+                                {registration.status}
+                              </Badge>
+                            </div>
+
+                            {registration.status === 'PENDING' && (
+                              <div className="flex gap-2">
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleRegistrationAction(registration.id, 'approve')}
+                                  disabled={actionLoading === registration.id}
+                                  className="bg-green-600 hover:bg-green-700 text-white"
+                                >
+                                  {actionLoading === registration.id ? (
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <UserCheck className="w-3 h-3" />
+                                  )}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleRegistrationAction(registration.id, 'reject')}
+                                  disabled={actionLoading === registration.id}
+                                  className="border-red-700 text-red-400 hover:bg-red-900/20"
+                                >
+                                  <UserX className="w-3 h-3" />
+                                </Button>
+                              </div>
+                            )}
+
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm" 
+                                  className="text-gray-400 hover:text-white"
+                                  onClick={() => setSelectedUser(registration)}
+                                >
+                                  <Eye className="w-4 h-4" />
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent className="bg-zinc-900 border-zinc-800 text-white max-w-2xl">
+                                <DialogHeader>
+                                  <DialogTitle className="flex items-center gap-3">
+                                    <Avatar className="w-12 h-12">
+                                      <AvatarImage src={registration.user.image} />
+                                      <AvatarFallback className="bg-zinc-700 text-white">
+                                        {registration.user.name.charAt(0).toUpperCase()}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <div>
+                                      <h3 className="text-xl font-semibold">{registration.user.name}</h3>
+                                      <p className="text-gray-400">{registration.user.email}</p>
+                                    </div>
+                                  </DialogTitle>
+                                </DialogHeader>
+                                
+                                <div className="space-y-4">
+                                  {registration.user.bio && (
+                                    <div>
+                                      <Label className="text-gray-400">Bio</Label>
+                                      <p className="text-white mt-1">{registration.user.bio}</p>
+                                    </div>
+                                  )}
+                                  
+                                  {registration.user.location && (
+                                    <div>
+                                      <Label className="text-gray-400">Location</Label>
+                                      <p className="text-white mt-1">{registration.user.location}</p>
+                                    </div>
+                                  )}
+
+                                  <div>
+                                    <Label className="text-gray-400">Registration Status</Label>
+                                    <div className="flex items-center gap-2 mt-1">
+                                      {getStatusIcon(registration.status)}
+                                      <Badge className={`${getStatusColor(registration.status)} text-white`}>
+                                        {registration.status}
+                                      </Badge>
+                                    </div>
+                                  </div>
+
+                                  <div>
+                                    <Label className="text-gray-400">Registration Date</Label>
+                                    <p className="text-white mt-1">{formatDate(registration.createdAt)}</p>
+                                  </div>
+
+                                  {registration.answers && registration.answers.length > 0 && (
+                                    <div>
+                                      <Label className="text-gray-400">Registration Answers</Label>
+                                      <div className="space-y-3 mt-2">
+                                        {registration.answers.map((answer) => (
+                                          <div key={answer.id} className="p-3 bg-zinc-800/50 rounded-lg">
+                                            <p className="text-sm text-gray-400 mb-1">{answer.question.text}</p>
+                                            <p className="text-white">{answer.answer}</p>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+
+                                <DialogFooter>
+                                  <div className="flex gap-2 w-full">
+                                    {registration.status === 'PENDING' && (
+                                      <>
+                                        <Button
+                                          onClick={() => handleRegistrationAction(registration.id, 'approve')}
+                                          disabled={actionLoading === registration.id}
+                                          className="bg-green-600 hover:bg-green-700 text-white flex-1"
+                                        >
+                                          <UserCheck className="w-4 h-4 mr-2" />
+                                          Approve
+                                        </Button>
+                                        <Button
+                                          variant="outline"
+                                          onClick={() => handleRegistrationAction(registration.id, 'reject')}
+                                          disabled={actionLoading === registration.id}
+                                          className="border-red-700 text-red-400 hover:bg-red-900/20 flex-1"
+                                        >
+                                          <UserX className="w-4 h-4 mr-2" />
+                                          Reject
+                                        </Button>
+                                      </>
+                                    )}
+                                    <Button
+                                      variant="outline"
+                                      className="border-zinc-700 text-white hover:bg-zinc-800"
+                                    >
+                                      <Mail className="w-4 h-4 mr-2" />
+                                      Send Message
+                                    </Button>
+                                  </div>
+                                </DialogFooter>
+                              </DialogContent>
+                            </Dialog>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
+
+                  
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Questions Tab */}
+          <TabsContent value="questions" className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-white">Registration Questions</h2>
+                <p className="text-gray-400 mt-1">
+                  Customize the information you collect from attendees during registration
+                </p>
+              </div>
+            </div>
+
+            <QuestionManager
+              eventId={resolvedParams.id}
+              questions={event?.questions || []}
+              onQuestionsUpdate={(updatedQuestions) => {
+                // Refresh the event data
+                fetchEventData();
+              }}
+            />
           </TabsContent>
 
           {/* Settings Tab */}

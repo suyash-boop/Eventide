@@ -67,18 +67,32 @@ export default function MyEventsPage() {
       setLoading(true);
       setError("");
       
+      console.log('Fetching events for user:', session?.user?.email);
+      
       // Fetch hosting events
       const hostingResponse = await fetch('/api/user/events/hosting');
+      console.log('Hosting response status:', hostingResponse.status);
+      
       if (hostingResponse.ok) {
         const hostingData = await hostingResponse.json();
+        console.log('Hosting data:', hostingData);
         setHostingEvents(hostingData.data?.events || []);
+      } else {
+        const errorData = await hostingResponse.json();
+        console.error('Hosting events error:', errorData);
       }
 
       // Fetch registered events
       const registrationsResponse = await fetch('/api/user/events/registrations');
+      console.log('Registrations response status:', registrationsResponse.status);
+      
       if (registrationsResponse.ok) {
         const registrationsData = await registrationsResponse.json();
+        console.log('Registrations data:', registrationsData);
         setRegisteredEvents(registrationsData.data?.registrations || []);
+      } else {
+        const errorData = await registrationsResponse.json();
+        console.error('Registrations error:', errorData);
       }
       
     } catch (error) {

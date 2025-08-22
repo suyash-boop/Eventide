@@ -1,108 +1,69 @@
 import { useState, useEffect } from 'react';
-import { fetchEvents, fetchEventById, createEvent, type Event, type EventsResponse, type CreateEventData } from '@/lib/api';
 
-// Hook for fetching events with filtering
-export function useEvents(params: {
-  search?: string;
-  category?: string;
-  eventType?: string;
-  sortBy?: string;
-  page?: number;
-  limit?: number;
-} = {}) {
-  const [data, setData] = useState<EventsResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function loadEvents() {
-      try {
-        setLoading(true);
-        setError(null);
-        const result = await fetchEvents(params);
-        setData(result);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load events');
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadEvents();
-  }, [JSON.stringify(params)]);
-
-  const refetch = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const result = await fetchEvents(params);
-      setData(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load events');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return {
-    events: data?.events || [],
-    pagination: data?.pagination,
-    filters: data?.filters,
-    loading,
-    error,
-    refetch
+interface Event {
+  id: string;
+  title: string;
+  description: string;
+  startDate: string;
+  endDate: string;
+  location: string;
+  venue?: string;
+  eventType: string;
+  category: string;
+  attendeeCount: number;
+  maxAttendees?: number;
+  price: number;
+  organizerId: string;
+  image?: string;
+  tags: string[];
+  isPublic: boolean;
+  requireApproval: boolean;
+  createdAt: string;
+  updatedAt: string;
+  organizer: {
+    id: string;
+    name: string;
+    email: string;
+    image?: string;
+    bio?: string;
+    location?: string;
+    website?: string;
   };
 }
 
-// Hook for fetching single event
-export function useEvent(id: string | null) {
+export function useEvent(eventId: string) {
   const [event, setEvent] = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!id) {
-      setLoading(false);
-      return;
-    }
+    if (!eventId) return;
 
-    async function loadEvent() {
+    const fetchEvent = async () => {
       try {
         setLoading(true);
         setError(null);
-        const result = await fetchEventById(id);
-        setEvent(result);
+
+        const response = await fetch(`/api/events/${eventId}`);
+        if (!response.ok) {
+          throw new Error('Event not found');
+        }
+
+        const data = await response.json();
+        if (data.success) {
+          setEvent(data.data.event);
+        } else {
+          throw new Error(data.error || 'Failed to load event');
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load event');
       } finally {
         setLoading(false);
       }
-    }
+    };
 
-    loadEvent();
-  }, [id]);
+    fetchEvent();
+  }, [eventId]);
 
   return { event, loading, error };
-}
-
-// Hook for creating events
-export function useCreateEvent() {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const create = async (eventData: CreateEventData): Promise<Event | null> => {
-    try {
-      setLoading(true);
-      setError(null);
-      const result = await createEvent(eventData);
-      return result;
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create event');
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return { create, loading, error };
 }

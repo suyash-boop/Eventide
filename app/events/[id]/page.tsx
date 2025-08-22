@@ -1,26 +1,89 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, use } from "react";
+import { useSession } from "next-auth/react";
 import { ArrowLeft, Calendar, Clock, MapPin, Users, Share2, Heart, Bookmark, ExternalLink, Globe, Video, Building, Star, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEvent } from "@/hooks/useEvents";
+import EventRegistrationForm from "@/components/EventRegistrationForm";
+import RegistrationStatus from "@/components/RegistrationStatus";
 
 interface EventDetailPageProps {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 export default function EventDetailPage({ params }: EventDetailPageProps) {
   const router = useRouter();
-  const { event, loading, error } = useEvent(params.id);
-  const [isAttending, setIsAttending] = useState(false);
+  const { data: session } = useSession();
+  
+  // Unwrap the params Promise
+  const resolvedParams = use(params);
+  const { event, loading, error } = useEvent(resolvedParams.id);
+  
   const [isSaved, setIsSaved] = useState(false);
+  const [showRegistrationForm, setShowRegistrationForm] = useState(false);
+  const [registrationStatus, setRegistrationStatus] = useState<{
+    isRegistered: boolean;
+    status?: string;
+  }>({ isRegistered: false });
+
+  // Check registration status
+  useEffect(() => {
+    if (session?.user && event?.id) {
+      checkRegistrationStatus();
+    }
+  }, [session, event]);
+
+  const checkRegistrationStatus = async () => {
+    try {
+      const response = await fetch(`/api/events/${event?.id}/register`);
+      if (response.ok) {
+        const data = await response.json();
+        setRegistrationStatus({
+          isRegistered: data.data.isRegistered,
+          status: data.data.registration?.status
+        });
+      }
+    } catch (error) {
+      console.error('Error checking registration status:', error);
+    }
+  };
+
+  const handleRegistrationSuccess = () => {
+    setShowRegistrationForm(false);
+    checkRegistrationStatus();
+    // Refresh event data to update attendee count
+    window.location.reload();
+  };
+
+  const handleShareEvent = () => {
+    if (navigator.share) {
+      navigator.share({
+        title: event?.title,
+        text: event?.description,
+        url: window.location.href,
+      });
+    } else {
+      // Fallback: copy to clipboard
+      navigator.clipboard.writeText(window.location.href);
+      // TODO: Show toast notification
+    }
+  };
 
   if (loading) {
     return (
@@ -100,23 +163,106 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
     ? event.organizer.website 
     : undefined;
 
-  const handleAttendEvent = () => {
-    setIsAttending(!isAttending);
-    // TODO: Make API call to register/unregister for event
-  };
+  // Check if user is the organizer
+  const isOrganizer = session?.user?.email && typeof event.organizer === 'object' 
+    ? session.user.email === event.organizer.email 
+    : false;
 
-  const handleShareEvent = () => {
-    if (navigator.share) {
-      navigator.share({
-        title: event.title,
-        text: event.description,
-        url: window.location.href,
-      });
-    } else {
-      // Fallback: copy to clipboard
-      navigator.clipboard.writeText(window.location.href);
-      // TODO: Show toast notification
+  // Check if event has started or ended
+  const hasStarted = new Date(event.startDate) <= new Date();
+  const hasEnded = new Date(event.endDate) <= new Date();
+
+  const renderRegistrationButton = () => {
+    if (!session?.user) {
+      return (
+        <Button asChild className="w-full h-12 text-lg font-medium bg-white text-black hover:bg-gray-200">
+          <Link href="/auth/signin">Sign In to Register</Link>
+        </Button>
+      );
     }
+
+    if (isOrganizer) {
+      return (
+        <Button asChild className="w-full h-12 text-lg font-medium bg-blue-600 hover:bg-blue-700 text-white">
+          <Link href={`/events/${event.id}/manage`}>Manage Event</Link>
+        </Button>
+      );
+    }
+
+    if (hasEnded) {
+      return (
+        <Button disabled className="w-full h-12 text-lg font-medium bg-gray-600 text-gray-300">
+          Event Ended
+        </Button>
+      );
+    }
+
+    if (hasStarted) {
+      return (
+        <Button disabled className="w-full h-12 text-lg font-medium bg-gray-600 text-gray-300">
+          Event Started
+        </Button>
+      );
+    }
+
+    if (registrationStatus.isRegistered) {
+      const statusColors = {
+        APPROVED: 'bg-green-600 hover:bg-green-700',
+        PENDING: 'bg-yellow-600 hover:bg-yellow-700',
+        REJECTED: 'bg-red-600 hover:bg-red-700',
+        WAITLIST: 'bg-blue-600 hover:bg-blue-700'
+      };
+
+      const statusTexts = {
+        APPROVED: 'Registered ✓',
+        PENDING: 'Pending Approval',
+        REJECTED: 'Registration Rejected',
+        WAITLIST: 'On Waitlist'
+      };
+
+      return (
+        <Button 
+          disabled 
+          className={`w-full h-12 text-lg font-medium text-white ${
+            statusColors[registrationStatus.status as keyof typeof statusColors] || 'bg-gray-600'
+          }`}
+        >
+          {statusTexts[registrationStatus.status as keyof typeof statusTexts] || 'Registered'}
+        </Button>
+      );
+    }
+
+    // Check capacity
+    if (event.maxAttendees && event.attendeeCount >= event.maxAttendees) {
+      return (
+        <Button disabled className="w-full h-12 text-lg font-medium bg-gray-600 text-gray-300">
+          Event Full
+        </Button>
+      );
+    }
+
+    return (
+      <Dialog open={showRegistrationForm} onOpenChange={setShowRegistrationForm}>
+        <DialogTrigger asChild>
+          <Button className="w-full h-12 text-lg font-medium bg-white text-black hover:bg-gray-200">
+            Register Now
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="bg-zinc-900 border-zinc-800 text-white max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Register for {event.title}</DialogTitle>
+            <DialogDescription className="text-gray-400">
+              Complete your registration for this event
+            </DialogDescription>
+          </DialogHeader>
+          <EventRegistrationForm
+            event={event}
+            onSuccess={handleRegistrationSuccess}
+            onCancel={() => setShowRegistrationForm(false)}
+          />
+        </DialogContent>
+      </Dialog>
+    );
   };
 
   return (
@@ -245,6 +391,14 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
               </div>
             </div>
 
+            {/* Registration Status for Mobile */}
+            <div className="lg:hidden">
+              <RegistrationStatus 
+                eventId={event.id} 
+                onRegister={() => setShowRegistrationForm(true)} 
+              />
+            </div>
+
             {/* Description */}
             <Card className="bg-zinc-900/40 border-zinc-800/50">
               <CardHeader>
@@ -314,34 +468,6 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
                 </div>
               </CardContent>
             </Card>
-
-            {/* Related Events */}
-            {event.relatedEvents && event.relatedEvents.length > 0 && (
-              <Card className="bg-zinc-900/40 border-zinc-800/50">
-                <CardHeader>
-                  <CardTitle className="text-white">Related Events</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {event.relatedEvents.map((relatedEvent: any) => (
-                      <Link 
-                        key={relatedEvent.id} 
-                        href={`/events/${relatedEvent.id}`}
-                        className="block p-4 bg-zinc-800/50 rounded-lg hover:bg-zinc-800 transition-colors"
-                      >
-                        <h4 className="font-medium text-white mb-1 line-clamp-2">{relatedEvent.title}</h4>
-                        <p className="text-sm text-gray-400">
-                          {formatDate(relatedEvent.startDate)} • {relatedEvent.location}
-                        </p>
-                        <Badge variant="outline" className="border-zinc-700 text-zinc-400 text-xs mt-2">
-                          {relatedEvent.category}
-                        </Badge>
-                      </Link>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
           </div>
 
           {/* Sidebar */}
@@ -357,25 +483,9 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
                     <p className="text-gray-400">per person</p>
                   </div>
 
-                  <Button 
-                    onClick={handleAttendEvent}
-                    className={`w-full h-12 text-lg font-medium transition-colors ${
-                      isAttending 
-                        ? 'bg-green-600 hover:bg-green-700 text-white' 
-                        : 'bg-white text-black hover:bg-gray-200'
-                    }`}
-                  >
-                    {isAttending ? (
-                      <div className="flex items-center gap-2">
-                        <Users className="w-4 h-4" />
-                        Attending ✓
-                      </div>
-                    ) : (
-                      'Register Now'
-                    )}
-                  </Button>
+                  {renderRegistrationButton()}
 
-                  {event.requireApproval && (
+                  {event.requireApproval && !registrationStatus.isRegistered && (
                     <p className="text-xs text-yellow-400 text-center">
                       * Requires organizer approval
                     </p>
@@ -404,6 +514,14 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Registration Status for Desktop */}
+            <div className="hidden lg:block">
+              <RegistrationStatus 
+                eventId={event.id} 
+                onRegister={() => setShowRegistrationForm(true)} 
+              />
+            </div>
 
             {/* Quick Info */}
             <Card className="bg-zinc-900/40 border-zinc-800/50">

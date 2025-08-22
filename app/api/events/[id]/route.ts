@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { prisma } from '@/lib/prisma';
 
-// GET /api/events/[id] - Fetch single event
+// GET /api/events/[id] - Get specific event
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
     const eventId = params.id;
-    
+
     const event = await prisma.event.findUnique({
       where: { id: eventId },
       include: {
@@ -16,10 +18,8 @@ export async function GET(
           select: {
             id: true,
             name: true,
-            image: true,
-            bio: true,
-            location: true,
-            website: true
+            email: true,
+            image: true
           }
         }
       }
@@ -32,30 +32,17 @@ export async function GET(
       }, { status: 404 });
     }
 
-    // Get related events (same category, excluding current event)
-    const relatedEvents = await prisma.event.findMany({
-      where: {
-        AND: [
-          { id: { not: eventId } },
-          { category: event.category },
-          { isPublic: true }
-        ]
-      },
-      take: 3,
-      select: {
-        id: true,
-        title: true,
-        startDate: true,
-        image: true,
-        category: true,
-        location: true
-      },
-      orderBy: {
-        startDate: 'asc'
-      }
-    });
+    // Check if event is public or if user is the organizer
+    const session = await getServerSession(authOptions);
+    const isOrganizer = session?.user?.email === event.organizer.email;
 
-    // Transform event data - return organizer as object for details page
+    if (!event.isPublic && !isOrganizer) {
+      return NextResponse.json({
+        success: false,
+        error: 'Event not found'
+      }, { status: 404 });
+    }
+
     const transformedEvent = {
       id: event.id,
       title: event.title,
@@ -69,15 +56,6 @@ export async function GET(
       attendeeCount: event.attendeeCount,
       maxAttendees: event.maxAttendees,
       price: event.price,
-      // Return organizer as object for the details page
-      organizer: {
-        name: event.organizer.name || 'Unknown Organizer',
-        image: event.organizer.image,
-        bio: event.organizer.bio,
-        location: event.organizer.location,
-        website: event.organizer.website,
-        verified: false // Add this if you have a verified field
-      },
       organizerId: event.organizerId,
       image: event.image,
       tags: event.tags,
@@ -85,21 +63,12 @@ export async function GET(
       requireApproval: event.requireApproval,
       createdAt: event.createdAt.toISOString(),
       updatedAt: event.updatedAt.toISOString(),
-      relatedEvents: relatedEvents.map(rel => ({
-        id: rel.id,
-        title: rel.title,
-        startDate: rel.startDate.toISOString(),
-        image: rel.image,
-        category: rel.category,
-        location: rel.location
-      }))
+      organizer: event.organizer
     };
 
     return NextResponse.json({
       success: true,
-      data: {
-        event: transformedEvent
-      }
+      data: { event: transformedEvent }
     });
 
   } catch (error) {
@@ -117,39 +86,118 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
-    const eventId = params.id;
-    const body = await request.json();
+    const session = await getServerSession(authOptions);
     
-    const event = await prisma.event.findUnique({
-      where: { id: eventId }
-    });
-    
-    if (!event) {
+    if (!session?.user?.email) {
       return NextResponse.json({
         success: false,
-        error: 'Event not found'
+        error: 'Unauthorized'
+      }, { status: 401 });
+    }
+
+    const eventId = params.id;
+
+    // Get user from database
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      select: { id: true }
+    });
+
+    if (!user) {
+      return NextResponse.json({
+        success: false,
+        error: 'User not found'
       }, { status: 404 });
     }
 
-    // Update event
+    // Verify event ownership
+    const existingEvent = await prisma.event.findFirst({
+      where: {
+        id: eventId,
+        organizerId: user.id
+      }
+    });
+
+    if (!existingEvent) {
+      return NextResponse.json({
+        success: false,
+        error: 'Event not found or unauthorized'
+      }, { status: 404 });
+    }
+
+    const body = await request.json();
+    
+    const {
+      title,
+      description,
+      startDate,
+      endDate,
+      location,
+      venue,
+      eventType,
+      category,
+      maxAttendees,
+      price,
+      image,
+      tags,
+      isPublic,
+      requireApproval
+    } = body;
+
+    // Validate required fields
+    if (!title || !description || !startDate || !endDate || !location || !eventType || !category) {
+      return NextResponse.json({
+        success: false,
+        error: 'Missing required fields'
+      }, { status: 400 });
+    }
+
+    // Validate dates
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    if (start >= end) {
+      return NextResponse.json({
+        success: false,
+        error: 'End date must be after start date'
+      }, { status: 400 });
+    }
+
+    // Update the event
+    const updateData = {
+      title: title.trim(),
+      description: description.trim(),
+      startDate: start,
+      endDate: end,
+      location: location.trim(),
+      venue: venue?.trim() || null,
+      eventType,
+      category,
+      maxAttendees: maxAttendees ? parseInt(maxAttendees) : null,
+      price: price ? parseFloat(price) : 0,
+      image: image?.trim() || null,
+      tags: Array.isArray(tags) ? tags : [],
+      isPublic: Boolean(isPublic),
+      requireApproval: Boolean(requireApproval),
+      updatedAt: new Date()
+    };
+
     const updatedEvent = await prisma.event.update({
       where: { id: eventId },
-      data: {
-        ...body,
-        updatedAt: new Date()
-      },
+      data: updateData,
       include: {
         organizer: {
           select: {
             id: true,
             name: true,
+            email: true,
             image: true
           }
         }
       }
     });
 
-    // Transform response
+    // Transform the response
     const transformedEvent = {
       id: updatedEvent.id,
       title: updatedEvent.title,
@@ -163,22 +211,20 @@ export async function PUT(
       attendeeCount: updatedEvent.attendeeCount,
       maxAttendees: updatedEvent.maxAttendees,
       price: updatedEvent.price,
-      organizer: updatedEvent.organizer.name || 'Unknown',
       organizerId: updatedEvent.organizerId,
       image: updatedEvent.image,
       tags: updatedEvent.tags,
       isPublic: updatedEvent.isPublic,
       requireApproval: updatedEvent.requireApproval,
       createdAt: updatedEvent.createdAt.toISOString(),
-      updatedAt: updatedEvent.updatedAt.toISOString()
+      updatedAt: updatedEvent.updatedAt.toISOString(),
+      organizer: updatedEvent.organizer
     };
 
     return NextResponse.json({
       success: true,
-      data: {
-        event: transformedEvent,
-        message: 'Event updated successfully'
-      }
+      data: { event: transformedEvent },
+      message: 'Event updated successfully'
     });
 
   } catch (error) {
@@ -196,29 +242,72 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
-    const eventId = params.id;
+    const session = await getServerSession(authOptions);
     
-    const event = await prisma.event.findUnique({
-      where: { id: eventId }
-    });
-    
-    if (!event) {
+    if (!session?.user?.email) {
       return NextResponse.json({
         success: false,
-        error: 'Event not found'
+        error: 'Unauthorized'
+      }, { status: 401 });
+    }
+
+    const eventId = params.id;
+
+    // Get user from database
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      select: { id: true }
+    });
+
+    if (!user) {
+      return NextResponse.json({
+        success: false,
+        error: 'User not found'
       }, { status: 404 });
     }
 
-    // Delete event
-    await prisma.event.delete({
-      where: { id: eventId }
+    // Verify event ownership
+    const event = await prisma.event.findFirst({
+      where: {
+        id: eventId,
+        organizerId: user.id
+      }
     });
+
+    if (!event) {
+      return NextResponse.json({
+        success: false,
+        error: 'Event not found or unauthorized'
+      }, { status: 404 });
+    }
+
+    // Delete event and all related data
+    await prisma.$transaction([
+      // Delete all answers for this event's registrations
+      prisma.answer.deleteMany({
+        where: {
+          registration: {
+            eventId: eventId
+          }
+        }
+      }),
+      // Delete all registrations
+      prisma.registration.deleteMany({
+        where: { eventId: eventId }
+      }),
+      // Delete all questions
+      prisma.question.deleteMany({
+        where: { eventId: eventId }
+      }),
+      // Delete the event
+      prisma.event.delete({
+        where: { id: eventId }
+      })
+    ]);
 
     return NextResponse.json({
       success: true,
-      data: {
-        message: 'Event deleted successfully'
-      }
+      message: 'Event deleted successfully'
     });
 
   } catch (error) {

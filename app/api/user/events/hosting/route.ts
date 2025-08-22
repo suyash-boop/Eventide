@@ -7,6 +7,7 @@ import { prisma } from '@/lib/prisma';
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
+    console.log('Hosting events - Session:', session?.user?.email);
     
     if (!session?.user?.email) {
       return NextResponse.json({
@@ -18,8 +19,10 @@ export async function GET(request: NextRequest) {
     // Get user from database
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
-      select: { id: true }
+      select: { id: true, email: true }
     });
+
+    console.log('Found user:', user);
 
     if (!user) {
       return NextResponse.json({
@@ -52,6 +55,8 @@ export async function GET(request: NextRequest) {
       }
     });
 
+    console.log(`Found ${events.length} events for user ${user.id}`);
+
     // Transform events
     const transformedEvents = events.map(event => ({
       id: event.id,
@@ -63,7 +68,7 @@ export async function GET(request: NextRequest) {
       venue: event.venue,
       eventType: event.eventType,
       category: event.category,
-      attendeeCount: event._count.registrations,
+      attendeeCount: event._count.registrations, // Use _count from registrations
       maxAttendees: event.maxAttendees,
       price: event.price,
       organizerId: event.organizerId,

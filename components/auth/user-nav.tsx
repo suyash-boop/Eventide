@@ -60,7 +60,7 @@ export function UserNav() {
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild className="text-gray-300 hover:text-white hover:bg-white/5 cursor-pointer">
-          <Link href="/events/my">
+          <Link href="/my-events">
             <Calendar className="mr-3 h-4 w-4" />
             <span>My Events</span>
           </Link>

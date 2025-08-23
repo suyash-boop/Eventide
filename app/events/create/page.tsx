@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Calendar, MapPin, Users, DollarSign, Globe, Image as ImageIcon, Loader2, CheckCircle, AlertCircle } from "lucide-react";
+import { Calendar, MapPin, Users, DollarSign, Globe, Image as ImageIcon, Loader2, CheckCircle, AlertCircle, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,6 +18,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useCreateEvent } from "@/hooks/useEvents";
 import { useRouter } from "next/navigation";
+
 
 interface FormErrors {
   title?: string;
@@ -57,6 +58,12 @@ export default function CreateEventPage() {
   });
 
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [enhancing, setEnhancing] = useState(false);
+  const [prompt, setPrompt] = useState("");
+  const [aiFilling, setAiFilling] = useState(false);
+
+  // Add your Groq API key here or use env variable
+  const GROQ_API_KEY = process.env.NEXT_PUBLIC_GROQ_API_KEY || "";
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -208,6 +215,54 @@ export default function CreateEventPage() {
     }
   };
 
+  const enhanceDescription = async () => {
+    if (!formData.description.trim()) return;
+    setEnhancing(true);
+
+    try {
+      const res = await fetch("/api/enhancedescription", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: formData.description }),
+      });
+      const data = await res.json();
+      if (data.enhanced) {
+        setFormData({ ...formData, description: data.enhanced });
+      } else {
+        alert(data.error || "Failed to enhance description.");
+      }
+    } catch (err) {
+      alert("Failed to enhance description.");
+    } finally {
+      setEnhancing(false);
+    }
+  };
+
+  const handleAIFill = async () => {
+    if (prompt.trim().split(/\s+/).length < 30) {
+      alert("Prompt must be at least 30 words.");
+      return;
+    }
+    setAiFilling(true);
+    try {
+      const res = await fetch("/api/event-ai-fill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt }),
+      });
+      const data = await res.json();
+      if (data && data.fields) {
+        setFormData({ ...formData, ...data.fields });
+      } else {
+        alert(data.error || "AI could not fill the form.");
+      }
+    } catch (err) {
+      alert("Failed to fill form with AI.");
+    } finally {
+      setAiFilling(false);
+    }
+  };
+
   if (success) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
@@ -274,6 +329,34 @@ export default function CreateEventPage() {
 
           {/* Right Side - Event Form */}
           <div className="space-y-6">
+            {/* AI Prompt */}
+            <div className="space-y-2">
+              <Label className="text-gray-400 text-sm flex items-center gap-2">
+                <Sparkles className="w-4 h-4" />
+                Describe your event (min 30 words)
+                <button
+                  type="button"
+                  className="ml-2 flex items-center gap-1 px-2 py-1 rounded bg-purple-800 hover:bg-purple-700 text-xs text-white"
+                  onClick={handleAIFill}
+                  disabled={aiFilling || prompt.trim().split(/\s+/).length < 30}
+                  title="Let AI fill the form"
+                >
+                  {aiFilling ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                  {aiFilling ? "Filling..." : "Fill with AI"}
+                </button>
+              </Label>
+              <Textarea
+                placeholder="Describe your event in detail. The AI will fill the form for you!"
+                value={prompt}
+                onChange={e => setPrompt(e.target.value)}
+                className="bg-zinc-900/50 border-zinc-800 text-white placeholder:text-gray-500 min-h-24"
+                disabled={aiFilling}
+              />
+              <div className="flex justify-end text-xs text-gray-500">
+                {prompt.trim().split(/\s+/).length} words
+              </div>
+            </div>
+
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Visibility */}
               <div className="flex items-center justify-end">
@@ -455,7 +538,19 @@ export default function CreateEventPage() {
 
               {/* Description */}
               <div className="space-y-2">
-                <Label className="text-gray-400 text-sm">Add Description</Label>
+                <Label className="text-gray-400 text-sm flex items-center gap-2">
+                  Add Description
+                  <button
+                    type="button"
+                    className="ml-2 flex items-center gap-1 px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-xs text-purple-300"
+                    onClick={enhanceDescription}
+                    disabled={enhancing || !formData.description.trim()}
+                    title="Enhance with AI"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    {enhancing ? "Enhancing..." : "Enhance"}
+                  </button>
+                </Label>
                 <Textarea
                   placeholder="What's your event about?"
                   value={formData.description}
@@ -464,6 +559,7 @@ export default function CreateEventPage() {
                     if (formErrors.description) setFormErrors({ ...formErrors, description: undefined });
                   }}
                   className={`bg-zinc-900/50 border-zinc-800 text-white placeholder:text-gray-500 min-h-24 ${formErrors.description ? 'border-red-500' : ''}`}
+                  disabled={enhancing}
                 />
                 <div className="flex justify-between text-xs text-gray-500">
                   {formErrors.description && (

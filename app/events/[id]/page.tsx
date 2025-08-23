@@ -20,6 +20,7 @@ import { useRouter } from "next/navigation";
 import { useEvent } from "@/hooks/useEvents";
 import EventRegistrationForm from "@/components/EventRegistrationForm";
 import RegistrationStatus from "@/components/RegistrationStatus";
+import { QRCodeSVG } from "qrcode.react";
 
 interface EventDetailPageProps {
   params: Promise<{
@@ -41,6 +42,7 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
     isRegistered: boolean;
     status?: string;
   }>({ isRegistered: false });
+  const [registration, setRegistration] = useState<{ id: string; checkInCode: string } | null>(null);
 
   // Check registration status
   useEffect(() => {
@@ -48,6 +50,16 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
       checkRegistrationStatus();
     }
   }, [session, event]);
+
+  useEffect(() => {
+    if (session?.user && event?.id && registrationStatus.isRegistered) {
+      fetch(`/api/events/${event.id}/my-registration`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.registration) setRegistration(data.registration);
+        });
+    }
+  }, [session?.user, event?.id, registrationStatus.isRegistered]);
 
   const checkRegistrationStatus = async () => {
     try {
@@ -83,6 +95,14 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
       navigator.clipboard.writeText(window.location.href);
       // TODO: Show toast notification
     }
+  };
+
+  const handleAddToGoogleCalendar = () => {
+    const start = new Date(event.startDate).toISOString().replace(/-|:|\.\d\d\d/g, "");
+    const end = new Date(event.endDate).toISOString().replace(/-|:|\.\d\d\d/g, "");
+    const calendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(event.title)}&dates=${start}/${end}&details=${encodeURIComponent(event.description)}&location=${encodeURIComponent(event.location)}`;
+    
+    window.open(calendarUrl, "_blank");
   };
 
   if (loading) {
@@ -229,6 +249,7 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
         >
           {statusTexts[registrationStatus.status as keyof typeof statusTexts] || 'Registered'}
         </Button>
+        
       );
     }
 
@@ -468,6 +489,22 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
                 </div>
               </CardContent>
             </Card>
+
+            {/* QR Code for Registration (if registered) */}
+            {registration && (
+              <Card className="bg-zinc-900/40 border-zinc-800/50">
+                <CardHeader>
+                  <CardTitle className="text-white">Registration QR Code</CardTitle>
+                </CardHeader>
+                <CardContent className="flex justify-center">
+                  <QRCodeSVG 
+                    value={registration.checkInCode} 
+                    size={256}
+                    className="rounded-lg"
+                  />
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* Sidebar */}
@@ -490,6 +527,26 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
                       * Requires organizer approval
                     </p>
                   )}
+
+                  {registration && registration.checkInCode && (
+                    <div className="flex flex-col items-center mt-6">
+                      <div className="text-xs text-gray-400 mb-2">Your Event Check-In QR Code</div>
+                      <div className="bg-white p-2 rounded shadow">
+                        <QRCodeSVG value={registration.checkInCode} size={120} />
+                      </div>
+                      <div className="text-gray-500 text-xs mt-2 text-center">
+                        Show this QR code at the event to check in.
+                      </div>
+                    </div>
+                  )}
+                  {registration && (
+  <Button
+    onClick={handleAddToGoogleCalendar}
+    className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white"
+  >
+    Add to Google Calendar
+  </Button>
+)}
 
                   <div className="pt-4 border-t border-zinc-800 text-sm text-gray-400 space-y-2">
                     <div className="flex justify-between">

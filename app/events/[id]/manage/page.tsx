@@ -61,6 +61,7 @@ import {
 } from "@/components/ui/dialog";
 import Link from "next/link";
 import QuestionManager from "@/components/QuestionManager";
+import HostCheckIn from "../HostCheckIn";
 
 interface Event {
   id: string;
@@ -100,6 +101,7 @@ interface Registration {
     location?: string;
   };
   answers?: RegistrationAnswer[];
+  checkedIn?: boolean;
 }
 
 interface RegistrationAnswer {
@@ -529,6 +531,7 @@ export default function EventManagePage({ params }: EventManagePageProps) {
             <TabsTrigger value="guests">Guests</TabsTrigger>
             <TabsTrigger value="questions">Questions</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
+            <TabsTrigger value="checkin">CheckIn</TabsTrigger>
           </TabsList>
 
           {/* Event Details Tab */}
@@ -957,7 +960,12 @@ export default function EventManagePage({ params }: EventManagePageProps) {
                               </Badge>
                             </div>
 
-                            {registration.status === 'PENDING' && (
+                            {registration.checkedIn ? (
+                              <div className="flex items-center gap-2">
+                                <CheckCircle className="w-4 h-4 text-green-400" />
+                                <span className="text-green-400 font-semibold">Checked In</span>
+                              </div>
+                            ) : registration.status === 'PENDING' && (
                               <div className="flex gap-2">
                                 <Button
                                   size="sm"
@@ -1138,6 +1146,26 @@ export default function EventManagePage({ params }: EventManagePageProps) {
                     <Trash2 className="w-4 h-4 mr-2" />
                     Delete Event
                   </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* CheckIn Tab */}
+          <TabsContent value="checkin" className="space-y-6">
+            <Card className="bg-zinc-900/40 border-zinc-800/50 max-w-lg mx-auto">
+              <CardHeader>
+                <CardTitle className="text-white">Event Check-In</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col items-center gap-6">
+                  <div className="text-gray-400 text-center mb-2">
+                    Scan an attendee's QR code to check them in for this event.<br />
+                    Make sure the QR code is clearly visible in the camera.
+                  </div>
+                  <div className="w-full flex justify-center">
+                    <HostCheckIn eventId={event.id} />
+                  </div>
                 </div>
               </CardContent>
             </Card>

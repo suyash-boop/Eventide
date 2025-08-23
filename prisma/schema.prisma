@@ -97,6 +97,8 @@ model Registration {
   answers   RegistrationAnswer[]
   event     Event                @relation(fields: [eventId], references: [id], onDelete: Cascade)
   user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checkInCode String?             @unique @default(uuid()) // Unique QR code value
+  checkedIn   Boolean            @default(false)          // Has the user checked in?
 
   @@unique([userId, eventId])
   @@map("registrations")

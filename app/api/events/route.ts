@@ -185,32 +185,46 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    
     const search = searchParams.get('search');
     const category = searchParams.get('category');
     const eventType = searchParams.get('eventType');
-    const sortBy = searchParams.get('sortBy') || 'date';
+    const sortBy = searchParams.get('sortBy') || 'newest';
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '20');
-    
-    const skip = (page - 1) * limit;
 
     // Build where clause
     const where: any = {
-      isPublic: true, // Only show public events
+      isPublic: true,
       startDate: {
         gte: new Date() // Only show future events
       }
     };
 
+    // Add search functionality
     if (search) {
       where.OR = [
-        { title: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
-        { location: { contains: search, mode: 'insensitive' } },
-        { 
-          organizer: {
-            name: { contains: search, mode: 'insensitive' }
+        {
+          title: {
+            contains: search,
+            mode: 'insensitive'
+          }
+        },
+        {
+          description: {
+            contains: search,
+            mode: 'insensitive'
+          }
+        },
+        {
+          location: {
+            contains: search,
+            mode: 'insensitive'
+          }
+        },
+        {
+          category: {
+            contains: search,
+            mode: 'insensitive'
           }
         }
       ];
@@ -225,24 +239,20 @@ export async function GET(request: NextRequest) {
     }
 
     // Build orderBy clause
-    let orderBy: any;
+    let orderBy: any = { createdAt: 'desc' };
+    
     switch (sortBy) {
-      case 'popular':
-        orderBy = { attendeeCount: 'desc' };
+      case 'oldest':
+        orderBy = { createdAt: 'asc' };
         break;
-      case 'recent':
-        orderBy = { createdAt: 'desc' };
-        break;
-      case 'price-low':
-        orderBy = { price: 'asc' };
-        break;
-      case 'price-high':
-        orderBy = { price: 'desc' };
-        break;
-      case 'date':
-      default:
+      case 'startDate':
         orderBy = { startDate: 'asc' };
         break;
+      case 'price':
+        orderBy = { price: 'asc' };
+        break;
+      default:
+        orderBy = { createdAt: 'desc' };
     }
 
     const events = await prisma.event.findMany({
@@ -253,22 +263,16 @@ export async function GET(request: NextRequest) {
             id: true,
             name: true,
             email: true,
-            image: true,
-            bio: true,
-            location: true,
-            website: true
+            image: true
           }
-        },
-        questions: {
-          orderBy: { order: 'asc' }
         }
       },
       orderBy,
-      skip,
+      skip: (page - 1) * limit,
       take: limit
     });
 
-    // Transform the response
+    // Transform events
     const transformedEvents = events.map(event => ({
       id: event.id,
       title: event.title,
@@ -282,15 +286,10 @@ export async function GET(request: NextRequest) {
       attendeeCount: event.attendeeCount,
       maxAttendees: event.maxAttendees,
       price: event.price,
-      organizerId: event.organizerId,
       image: event.image,
       tags: event.tags,
-      isPublic: event.isPublic,
-      requireApproval: event.requireApproval,
       createdAt: event.createdAt.toISOString(),
-      updatedAt: event.updatedAt.toISOString(),
-      organizer: event.organizer,
-      questions: event.questions || []
+      organizer: event.organizer
     }));
 
     return NextResponse.json({

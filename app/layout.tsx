@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components/providers/auth-provider";
 import { Header } from "@/components/layout/header";
+import { SearchProvider } from "@/contexts/SearchContext";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -20,10 +21,12 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body className={inter.className}>
         <AuthProvider>
-          <div className="min-h-screen bg-background">
-            <Header />
-            <main>{children}</main>
-          </div>
+          <SearchProvider>
+            <div className="min-h-screen bg-background">
+              <Header />
+              <main>{children}</main>
+            </div>
+          </SearchProvider>
         </AuthProvider>
       </body>
     </html>

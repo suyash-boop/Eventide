@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Calendar, MapPin, Users, DollarSign, Globe, Image as ImageIcon, Loader2, CheckCircle, AlertCircle } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Calendar, MapPin, Users, DollarSign, Globe, Image as ImageIcon, Loader2, CheckCircle, AlertCircle, IndianRupee } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,6 +19,13 @@ import { Badge } from "@/components/ui/badge";
 import { useCreateEvent } from "@/hooks/useEvents";
 import { useRouter } from "next/navigation";
 
+// Add Razorpay types
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
+
 interface FormErrors {
   title?: string;
   description?: string;
@@ -29,7 +36,8 @@ interface FormErrors {
   location?: string;
   category?: string;
   capacity?: string;
-  general?: string; // Add this for general errors
+  price?: string;
+  general?: string;
 }
 
 export default function CreateEventPage() {
@@ -38,7 +46,6 @@ export default function CreateEventPage() {
   const [success, setSuccess] = useState(false);
   const [formErrors, setFormErrors] = useState<FormErrors>({});
 
-  // Rename to formData to avoid conflict
   const [formData, setFormData] = useState({
     title: "",
     description: "",
@@ -50,13 +57,24 @@ export default function CreateEventPage() {
     eventType: "IN_PERSON",
     category: "",
     capacity: "",
-    price: 0,
+    price: "",
+    isPaid: false,
     requireApproval: false,
     isPublic: true,
     image: null as File | null
   });
 
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+
+  // Load Razorpay script
+  useEffect(() => {
+    if (!window.Razorpay) {
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.async = true;
+      document.body.appendChild(script);
+    }
+  }, []);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -156,6 +174,17 @@ export default function CreateEventPage() {
       isValid = false;
     }
 
+    // Price validation
+    if (formData.isPaid) {
+      if (!formData.price || formData.price === "0") {
+        errors.price = "Price is required for paid events";
+        isValid = false;
+      } else if (isNaN(parseFloat(formData.price)) || parseFloat(formData.price) < 1) {
+        errors.price = "Price must be at least ₹1";
+        isValid = false;
+      }
+    }
+
     setFormErrors(errors);
     return isValid;
   };
@@ -181,16 +210,16 @@ export default function CreateEventPage() {
       startDate: startDateTime.toISOString(),
       endDate: endDateTime.toISOString(),
       location: formData.location.trim(),
-      venue: "", // Add venue if you have it in your form
+      venue: "",
       eventType: formData.eventType,
       category: formData.category,
       maxAttendees: formData.capacity ? parseInt(formData.capacity) : undefined,
-      price: formData.price,
+      price: formData.isPaid ? parseFloat(formData.price) : 0,
       image: imagePreview || "",
-      tags: [], // Add tags if you have them
+      tags: [],
       isPublic: formData.isPublic,
       requireApproval: formData.requireApproval,
-      questions: [] // Add questions support later
+      questions: []
     };
 
     console.log('Submitting event:', eventPayload);
@@ -205,6 +234,17 @@ export default function CreateEventPage() {
       }, 2000);
     } else {
       setFormErrors({ general: result.error || 'Failed to create event' });
+    }
+  };
+
+  const handlePriceToggle = (isPaid: boolean) => {
+    setFormData({ 
+      ...formData, 
+      isPaid, 
+      price: isPaid ? formData.price : "0"
+    });
+    if (formErrors.price) {
+      setFormErrors({ ...formErrors, price: undefined });
     }
   };
 
@@ -243,13 +283,20 @@ export default function CreateEventPage() {
                   />
                 ) : (
                   <div className="text-center">
-                    <Calendar className="w-16 h-16 text-white mx-auto mb-4" /> {/* Made calendar white */}
+                    <Calendar className="w-16 h-16 text-black mx-auto mb-4" />
                     <h2 className="text-2xl font-bold text-white mb-2">
                       {formData.title || "Your Event Title"}
                     </h2>
                     <p className="text-white/80">
                       {formData.category || "Event Category"}
                     </p>
+                    {formData.isPaid && formData.price && (
+                      <div className="mt-2">
+                        <Badge className="bg-yellow-600 text-black font-semibold">
+                          ₹{formData.price}
+                        </Badge>
+                      </div>
+                    )}
                   </div>
                 )}
                 
@@ -303,7 +350,7 @@ export default function CreateEventPage() {
                     setFormData({ ...formData, title: e.target.value });
                     if (formErrors.title) setFormErrors({ ...formErrors, title: undefined });
                   }}
-                  className={`text-2xl font-bold bg-transparent border-0 text-white placeholder:text-gray-500 px-0 focus-visible:ring-0 ${formErrors.title ? 'border-red-500' : ''}`}
+                  className={`text-2xl font-bold bg-transparent border-0 text-white placeholder:text-gray-500 px-0 focus-visible:ring-0 focus:outline-none ${formErrors.title ? 'text-red-400' : ''}`}
                 />
                 {formErrors.title && (
                   <p className="text-red-400 text-sm flex items-center gap-1">
@@ -480,17 +527,61 @@ export default function CreateEventPage() {
               <div className="space-y-4">
                 <h3 className="text-white font-medium">Event Options</h3>
                 
-                {/* Tickets */}
-                <div className="flex items-center justify-between p-4 bg-zinc-900/50 rounded-lg border border-zinc-800">
-                  <div className="flex items-center gap-3">
-                    <DollarSign className="w-5 h-5 text-zinc-400" />
-                    <span className="text-white">Tickets</span>
+                {/* Pricing Section */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-4 bg-zinc-900/50 rounded-lg border border-zinc-800">
+                    <div className="flex items-center gap-3">
+                      <IndianRupee className="w-5 h-5 text-zinc-400" />
+                      <span className="text-white">Ticket Price</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge 
+                        variant={formData.isPaid ? "default" : "outline"} 
+                        className={formData.isPaid ? "bg-green-600" : "border-zinc-600 text-zinc-300"}
+                      >
+                        {formData.isPaid ? "Paid" : "Free"}
+                      </Badge>
+                      <Switch
+                        checked={formData.isPaid}
+                        onCheckedChange={handlePriceToggle}
+                      />
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="border-zinc-600 text-zinc-300">
-                      Free
-                    </Badge>
-                  </div>
+
+                  {/* Price Input */}
+                  {formData.isPaid && (
+                    <div className="p-4 bg-zinc-900/30 rounded-lg border border-zinc-800">
+                      <div className="space-y-2">
+                        <Label className="text-gray-400 text-sm">Price per ticket (₹)</Label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <IndianRupee className="h-4 w-4 text-gray-500" />
+                          </div>
+                          <Input
+                            type="number"
+                            placeholder="0"
+                            value={formData.price}
+                            onChange={(e) => {
+                              setFormData({ ...formData, price: e.target.value });
+                              if (formErrors.price) setFormErrors({ ...formErrors, price: undefined });
+                            }}
+                            className={`pl-8 bg-zinc-900/50 border-zinc-800 text-white placeholder:text-gray-500 ${formErrors.price ? 'border-red-500' : ''}`}
+                            min="1"
+                            step="1"
+                          />
+                        </div>
+                        {formErrors.price && (
+                          <p className="text-red-400 text-sm flex items-center gap-1">
+                            <AlertCircle className="w-4 h-4" />
+                            {formErrors.price}
+                          </p>
+                        )}
+                        <p className="text-xs text-gray-500">
+                          Amount will be collected via Razorpay during registration
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Require Approval */}

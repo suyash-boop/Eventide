@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { 
   User, 
   Mail, 
@@ -14,7 +15,10 @@ import {
   CheckCircle,
   AlertCircle,
   Loader2,
-  X
+  X,
+  IndianRupee,
+  CreditCard,
+  Shield
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,6 +37,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+
+// Add Razorpay types
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
 
 interface Question {
   id: string;
@@ -55,7 +66,11 @@ interface Event {
   price: number;
   requireApproval: boolean;
   attendeeCount: number;
-  questions?: Question[]; // Make questions optional
+  questions?: Question[];
+  organizer: {
+    name: string;
+    email: string;
+  };
 }
 
 interface RegistrationFormProps {
@@ -66,11 +81,46 @@ interface RegistrationFormProps {
 
 export default function EventRegistrationForm({ event, onSuccess, onCancel }: RegistrationFormProps) {
   const { data: session } = useSession();
+  const router = useRouter();
   const [answers, setAnswers] = useState<{ [key: string]: string }>({});
   const [loading, setLoading] = useState(false);
+  const [paymentLoading, setPaymentLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [razorpayLoaded, setRazorpayLoaded] = useState(false);
+
+  // Load Razorpay script
+  useEffect(() => {
+    const loadRazorpay = () => {
+      if (window.Razorpay) {
+        setRazorpayLoaded(true);
+        return;
+      }
+
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.async = true;
+      script.onload = () => {
+        console.log("Razorpay script loaded successfully");
+        setRazorpayLoaded(true);
+      };
+      script.onerror = () => {
+        console.error("Failed to load Razorpay script");
+        setError("Payment gateway could not be loaded. Please refresh and try again.");
+      };
+      document.body.appendChild(script);
+
+      return () => {
+        if (document.body.contains(script)) {
+          document.body.removeChild(script);
+        }
+      };
+    };
+
+    loadRazorpay();
+  }, []);
 
   const handleAnswerChange = (questionId: string, value: string) => {
     setAnswers(prev => ({
@@ -143,10 +193,15 @@ export default function EventRegistrationForm({ event, onSuccess, onCancel }: Re
       return;
     }
     
-    setShowConfirmDialog(true);
+    // If it's a paid event, show payment dialog
+    if (event.price > 0) {
+      setShowPaymentDialog(true);
+    } else {
+      setShowConfirmDialog(true);
+    }
   };
 
-  const confirmRegistration = async () => {
+  const handleFreeRegistration = async () => {
     setLoading(true);
     setError("");
     setShowConfirmDialog(false);
@@ -160,7 +215,7 @@ export default function EventRegistrationForm({ event, onSuccess, onCancel }: Re
           })).filter(answer => answer.answer.trim() !== '')
         : [];
 
-      console.log('Submitting registration with answers:', formattedAnswers);
+      console.log('Submitting free registration with answers:', formattedAnswers);
 
       const response = await fetch(`/api/events/${event.id}/register`, {
         method: 'POST',
@@ -190,6 +245,114 @@ export default function EventRegistrationForm({ event, onSuccess, onCancel }: Re
       setError(error instanceof Error ? error.message : 'Registration failed');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePaidRegistration = async () => {
+    if (!razorpayLoaded || !window.Razorpay) {
+      setError("Payment gateway is not ready. Please refresh and try again.");
+      return;
+    }
+
+    setPaymentLoading(true);
+    setShowPaymentDialog(false);
+
+    try {
+      // Calculate amounts (convenience fee + GST)
+      const baseAmount = event.price;
+      const convenienceFee = Math.max(29, Math.round(baseAmount * 0.03)); // 3% or minimum ₹29
+      const subtotal = baseAmount + convenienceFee;
+      const gstAmount = Math.round(subtotal * 0.18); // 18% GST
+      const totalAmount = subtotal + gstAmount;
+      const totalAmountPaisa = totalAmount * 100; // Convert to paisa for Razorpay
+
+      console.log('Payment calculation:', {
+        baseAmount,
+        convenienceFee,
+        subtotal,
+        gstAmount,
+        totalAmount,
+        totalAmountPaisa
+      });
+
+      const options = {
+        key: "rzp_test_gx221iz91bEkBt", // Your test key
+        amount: totalAmountPaisa,
+        currency: "INR",
+        name: "Eventide",
+        description: `Registration for: ${event.title}`,
+        handler: async function (response: any) {
+          console.log("Payment successful:", response);
+          
+          try {
+            // Process registration after successful payment
+            const formattedAnswers = (event.questions && Array.isArray(event.questions)) 
+              ? event.questions.map(question => ({
+                  questionId: question.id,
+                  answer: answers[question.id] || ''
+                })).filter(answer => answer.answer.trim() !== '')
+              : [];
+
+            const registrationResponse = await fetch(`/api/events/${event.id}/register`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                answers: formattedAnswers,
+                paymentId: response.razorpay_payment_id,
+                orderId: response.razorpay_order_id,
+                signature: response.razorpay_signature
+              }),
+            });
+
+            const registrationData = await registrationResponse.json();
+
+            if (registrationData.success) {
+              setSuccess(`Payment successful! ${registrationData.message}`);
+              setTimeout(() => {
+                onSuccess?.();
+              }, 2000);
+            } else {
+              throw new Error(registrationData.error || 'Registration failed after payment');
+            }
+
+          } catch (error) {
+            console.error('Registration error after payment:', error);
+            setError('Payment successful but registration failed. Please contact support.');
+          }
+        },
+        prefill: {
+          name: session?.user?.name || "",
+          email: session?.user?.email || "",
+          contact: ""
+        },
+        notes: {
+          "Event ID": event.id,
+          "Event": event.title,
+          "Base Price": `₹${baseAmount}`,
+          "Convenience Fee": `₹${convenienceFee}`,
+          "GST (18%)": `₹${gstAmount}`,
+          "Total": `₹${totalAmount}`
+        },
+        theme: {
+          color: "#000000"
+        },
+        modal: {
+          ondismiss: function() {
+            console.log("Payment modal closed");
+            setPaymentLoading(false);
+          }
+        }
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.open();
+
+    } catch (error) {
+      console.error("Payment initialization error:", error);
+      setError("Failed to initialize payment. Please try again.");
+      setPaymentLoading(false);
     }
   };
 
@@ -309,6 +472,13 @@ export default function EventRegistrationForm({ event, onSuccess, onCancel }: Re
     });
   };
 
+  // Calculate payment amounts for display
+  const baseAmount = event.price;
+  const convenienceFee = Math.max(29, Math.round(baseAmount * 0.03));
+  const subtotal = baseAmount + convenienceFee;
+  const gstAmount = Math.round(subtotal * 0.18);
+  const totalAmount = subtotal + gstAmount;
+
   if (success) {
     return (
       <Card className="bg-zinc-900/40 border-zinc-800/50">
@@ -354,8 +524,8 @@ export default function EventRegistrationForm({ event, onSuccess, onCancel }: Re
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <DollarSign className="w-4 h-4" />
-                <span>{event.price > 0 ? `$${event.price}` : 'Free'}</span>
+                <IndianRupee className="w-4 h-4" />
+                <span>{event.price > 0 ? `₹${event.price}` : 'Free'}</span>
               </div>
             </div>
             
@@ -368,6 +538,38 @@ export default function EventRegistrationForm({ event, onSuccess, onCancel }: Re
               </div>
             )}
           </div>
+
+          {/* Price Breakdown for Paid Events */}
+          {event.price > 0 && (
+            <div className="p-4 bg-zinc-800/30 rounded-lg">
+              <h5 className="font-medium text-white mb-3 flex items-center gap-2">
+                <IndianRupee className="w-4 h-4" />
+                Price Breakdown
+              </h5>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Event Fee</span>
+                  <span className="text-white">₹{baseAmount}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Convenience Fee</span>
+                  <span className="text-white">₹{convenienceFee}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">GST (18%)</span>
+                  <span className="text-white">₹{gstAmount}</span>
+                </div>
+                <div className="border-t border-zinc-700 pt-2 flex justify-between font-medium">
+                  <span className="text-white">Total Amount</span>
+                  <span className="text-white">₹{totalAmount}</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 text-xs text-gray-500 mt-3">
+                <Shield className="w-3 h-3" />
+                <span>Secure payment powered by Razorpay</span>
+              </div>
+            </div>
+          )}
 
           {/* Registration Form */}
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -407,15 +609,18 @@ export default function EventRegistrationForm({ event, onSuccess, onCancel }: Re
             <div className="flex gap-3 pt-4">
               <Button
                 type="submit"
-                disabled={loading || !session}
+                disabled={loading || paymentLoading || !session}
                 className="bg-white text-black hover:bg-gray-200 flex-1"
               >
-                {loading ? (
+                {loading || paymentLoading ? (
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : event.price > 0 ? (
+                  <CreditCard className="w-4 h-4 mr-2" />
                 ) : (
                   <CheckCircle className="w-4 h-4 mr-2" />
                 )}
-                {loading ? 'Registering...' : 'Register for Event'}
+                {loading || paymentLoading ? 'Processing...' : 
+                 event.price > 0 ? `Pay ₹${totalAmount}` : 'Register for Free'}
               </Button>
               
               {onCancel && (
@@ -423,7 +628,7 @@ export default function EventRegistrationForm({ event, onSuccess, onCancel }: Re
                   type="button"
                   variant="outline"
                   onClick={onCancel}
-                  disabled={loading}
+                  disabled={loading || paymentLoading}
                   className="border-zinc-700 text-white hover:bg-zinc-800"
                 >
                   <X className="w-4 h-4 mr-2" />
@@ -437,11 +642,17 @@ export default function EventRegistrationForm({ event, onSuccess, onCancel }: Re
                 Please sign in to register for this event
               </p>
             )}
+
+            {!razorpayLoaded && event.price > 0 && (
+              <p className="text-yellow-400 text-sm text-center">
+                Loading payment gateway...
+              </p>
+            )}
           </form>
         </CardContent>
       </Card>
 
-      {/* Confirmation Dialog */}
+      {/* Free Registration Confirmation Dialog */}
       <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
         <DialogContent className="bg-zinc-900 border-zinc-800 text-white">
           <DialogHeader>
@@ -456,6 +667,7 @@ export default function EventRegistrationForm({ event, onSuccess, onCancel }: Re
               <h4 className="font-semibold text-white mb-2">{event.title}</h4>
               <p className="text-gray-400 text-sm">{formatDate(event.startDate)}</p>
               <p className="text-gray-400 text-sm">{event.location}</p>
+              <p className="text-green-400 text-sm font-medium">Free Event</p>
             </div>
             
             {event.requireApproval && (
@@ -474,7 +686,7 @@ export default function EventRegistrationForm({ event, onSuccess, onCancel }: Re
               Cancel
             </Button>
             <Button
-              onClick={confirmRegistration}
+              onClick={handleFreeRegistration}
               disabled={loading}
               className="bg-white text-black hover:bg-gray-200"
             >
@@ -484,6 +696,70 @@ export default function EventRegistrationForm({ event, onSuccess, onCancel }: Re
                 <CheckCircle className="w-4 h-4 mr-2" />
               )}
               Confirm Registration
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Payment Confirmation Dialog */}
+      <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
+        <DialogContent className="bg-zinc-900 border-zinc-800 text-white">
+          <DialogHeader>
+            <DialogTitle>Confirm Payment & Registration</DialogTitle>
+            <DialogDescription className="text-gray-400">
+              You will be redirected to Razorpay to complete the payment.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div className="p-4 bg-zinc-800/50 rounded-lg">
+              <h4 className="font-semibold text-white mb-2">{event.title}</h4>
+              <p className="text-gray-400 text-sm">{formatDate(event.startDate)}</p>
+              <p className="text-gray-400 text-sm">{event.location}</p>
+            </div>
+
+            <div className="p-4 bg-zinc-800/30 rounded-lg">
+              <h5 className="font-medium text-white mb-2">Payment Summary</h5>
+              <div className="space-y-1 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Event Fee</span>
+                  <span className="text-white">₹{baseAmount}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Convenience Fee</span>
+                  <span className="text-white">₹{convenienceFee}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">GST (18%)</span>
+                  <span className="text-white">₹{gstAmount}</span>
+                </div>
+                <div className="border-t border-zinc-700 pt-1 flex justify-between font-medium">
+                  <span className="text-white">Total</span>
+                  <span className="text-white">₹{totalAmount}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowPaymentDialog(false)}
+              className="border-zinc-700 text-white hover:bg-zinc-800"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handlePaidRegistration}
+              disabled={paymentLoading || !razorpayLoaded}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {paymentLoading ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <CreditCard className="w-4 h-4 mr-2" />
+              )}
+              Proceed to Pay
             </Button>
           </DialogFooter>
         </DialogContent>

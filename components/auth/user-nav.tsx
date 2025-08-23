@@ -65,12 +65,12 @@ export function UserNav() {
             <span>My Events</span>
           </Link>
         </DropdownMenuItem>
-        <DropdownMenuItem asChild className="text-gray-300 hover:text-white hover:bg-white/5 cursor-pointer">
+        {/* <DropdownMenuItem asChild className="text-gray-300 hover:text-white hover:bg-white/5 cursor-pointer">
           <Link href="/settings">
             <Settings className="mr-3 h-4 w-4" />
             <span>Settings</span>
           </Link>
-        </DropdownMenuItem>
+        </DropdownMenuItem> */}
         <DropdownMenuSeparator className="bg-gray-800" />
         <DropdownMenuItem 
           onClick={() => signOut()}

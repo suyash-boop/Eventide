@@ -1,19 +1,17 @@
-import NextAuth, { type NextAuthOptions } from "next-auth";
+import { PrismaAdapter } from "@auth/prisma-adapter";
+import { prisma } from "@/lib/prisma";
 import GoogleProvider from "next-auth/providers/google";
-// ...import other providers or adapters...
+import type { NextAuthOptions } from "next-auth";
 
 export const authOptions: NextAuthOptions = {
+  adapter: PrismaAdapter(prisma),
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      authorization: {
-        params: {
-          scope: "openid email profile https://www.googleapis.com/auth/calendar.events",
-        },
-      },
     }),
-    // ...other providers...
   ],
-  // ...callbacks, session, pages, etc...
+  session: {
+    strategy: "database", // persists sessions and users
+  },
 };

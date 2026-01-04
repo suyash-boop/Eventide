@@ -17,10 +17,10 @@ export function Header() {
         {/* Logo and Navigation */}
         <div className="flex items-center space-x-8">
           <Link href="/" className="flex items-center space-x-3 group">
-            <div className="relative">
+            {/* <div className="relative">
               <Calendar className="h-8 w-8 text-primary transition-transform group-hover:scale-110" />
               <Sparkles className="absolute -top-1 -right-1 h-3 w-3 text-primary/60" />
-            </div>
+            </div> */}
             <span className="text-xl font-bold text-white tracking-tight">
               Eventide
             </span>

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { authOptions } from '@/lib/auth'; // changed import
 import { prisma } from '@/lib/prisma';
 
 // Add interface for question data
@@ -16,8 +16,10 @@ interface QuestionData {
 // PUT /api/events/[id]/questions - Update event questions
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id: eventId } = await params;
+
   try {
     const session = await getServerSession(authOptions);
     
@@ -28,7 +30,6 @@ export async function PUT(
       }, { status: 401 });
     }
 
-    const eventId = params.id;
     const { questions } = await request.json();
 
     console.log('Updating questions for event:', eventId);
@@ -112,11 +113,11 @@ export async function PUT(
 // GET /api/events/[id]/questions - Get event questions
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
-    const eventId = params.id;
+  const { id: eventId } = await params;
 
+  try {
     const questions = await prisma.question.findMany({
       where: { eventId: eventId },
       orderBy: { order: 'asc' }

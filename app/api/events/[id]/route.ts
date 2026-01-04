@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { authOptions } from '@/lib/auth'; // use shared authOptions
 import { prisma } from '@/lib/prisma';
 
 // GET /api/events/[id] - Get specific event
 export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await context.params; // await params
+
   try {
-    const eventId = params.id;
+    const eventId = id;
 
     const event = await prisma.event.findUnique({
       where: { id: eventId },
@@ -83,9 +85,10 @@ export async function GET(
 
 // PUT /api/events/[id] - Update event
 export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await context.params;
   try {
     const session = await getServerSession(authOptions);
     
@@ -96,7 +99,7 @@ export async function PUT(
       }, { status: 401 });
     }
 
-    const eventId = params.id;
+    const eventId = id;
 
     // Get user from database
     const user = await prisma.user.findUnique({
@@ -126,7 +129,7 @@ export async function PUT(
       }, { status: 404 });
     }
 
-    const body = await request.json();
+    const body = await req.json();
     
     const {
       title,
@@ -240,82 +243,45 @@ export async function PUT(
 // DELETE /api/events/[id] - Delete event
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
+  const { id: eventId } = await context.params;
+
   try {
     const session = await getServerSession(authOptions);
-    
     if (!session?.user?.email) {
-      return NextResponse.json({
-        success: false,
-        error: 'Unauthorized'
-      }, { status: 401 });
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
 
-    const eventId = params.id;
-
-    // Get user from database
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
       select: { id: true }
     });
 
     if (!user) {
-      return NextResponse.json({
-        success: false,
-        error: 'User not found'
-      }, { status: 404 });
+      return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
     }
 
-    // Verify event ownership
     const event = await prisma.event.findFirst({
-      where: {
-        id: eventId,
-        organizerId: user.id
-      }
+      where: { id: eventId, organizerId: user.id }
     });
 
     if (!event) {
-      return NextResponse.json({
-        success: false,
-        error: 'Event not found or unauthorized'
-      }, { status: 404 });
+      return NextResponse.json({ success: false, error: 'Event not found or unauthorized' }, { status: 404 });
     }
 
-    // Delete event and all related data
     await prisma.$transaction([
-      // Delete all answers for this event's registrations
-      prisma.answer.deleteMany({
-        where: {
-          registration: {
-            eventId: eventId
-          }
-        }
-      }),
-      // Delete all registrations
-      prisma.registration.deleteMany({
-        where: { eventId: eventId }
-      }),
-      // Delete all questions
-      prisma.question.deleteMany({
-        where: { eventId: eventId }
-      }),
-      // Delete the event
-      prisma.event.delete({
-        where: { id: eventId }
-      })
+      // prisma.answer.deleteMany({
+      //   where: { registration: { eventId } }
+      // }),
+      prisma.registration.deleteMany({ where: { eventId } }),
+      prisma.question.deleteMany({ where: { eventId } }),
+      prisma.event.delete({ where: { id: eventId } })
     ]);
 
-    return NextResponse.json({
-      success: true,
-      message: 'Event deleted successfully'
-    });
-
+    return NextResponse.json({ success: true, message: 'Event deleted successfully' });
   } catch (error) {
     console.error('Error deleting event:', error);
-    return NextResponse.json({
-      success: false,
-      error: 'Internal server error'
-    }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Internal server error' }, { status: 500 });
   }
 }

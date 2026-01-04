@@ -1,18 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { authOptions } from '@/lib/auth'; // <-- change this import
 import { prisma } from '@/lib/prisma';
-import { Prisma } from '@prisma/client';
-
-// Add interface for question data
-interface QuestionData {
-  id?: string;
-  text: string;
-  type: string;
-  required: boolean;
-  options?: string[];
-  order?: number;
-}
+import { Prisma, QuestionType } from '@prisma/client'; // add QuestionType
 
 // POST /api/events - Create new event
 export async function POST(request: NextRequest) {
@@ -131,18 +121,34 @@ export async function POST(request: NextRequest) {
       if (questions && questions.length > 0) {
         console.log('Creating questions:', questions);
         
-        const questionData = (questions as QuestionData[]).map((q: QuestionData, index: number) => ({
-          id: q.id || `q_${Date.now()}_${index}`,
-          eventId: event.id,
-          text: q.text,
-          type: q.type,
-          required: Boolean(q.required),
-          options: q.options || [],
-          order: q.order !== undefined ? q.order : index
-        }));
+        type QuestionInput = {
+          text: string;
+          type: string;        // incoming (string) from client
+          required?: boolean;
+          options?: string[];
+        };
+
+        const questionsInput = (body.questions ?? []) as QuestionInput[];
+
+        const questionData: Prisma.QuestionCreateManyInput[] = questionsInput
+          .map((q, idx) => {
+            const normalized = Object.values(QuestionType).find(
+              (v) => v.toLowerCase() === q.type.toLowerCase()
+            );
+            if (!normalized) return null; // skip invalid types
+            return {
+              eventId: event.id,
+              text: q.text,
+              type: normalized,
+              required: Boolean(q.required),
+              options: q.options ?? [],
+              order: idx,
+            };
+          })
+          .filter(Boolean) as Prisma.QuestionCreateManyInput[];
 
         await tx.question.createMany({
-          data: questionData
+          data: questionData,
         });
 
         console.log('Questions created successfully');

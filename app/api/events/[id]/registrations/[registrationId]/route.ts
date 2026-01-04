@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { authOptions } from '@/lib/auth'; // updated import
 import { prisma } from '@/lib/prisma';
-import { RegistrationStatus } from '@prisma/client'; // Import the enum from Prisma
+import { RegistrationStatus } from '@prisma/client';
 
 // PATCH /api/events/[id]/registrations/[registrationId] - Update registration status
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string; registrationId: string } }
+  context: { params: Promise<{ id: string; registrationId: string }> }
 ) {
+  const { id: eventId, registrationId } = await context.params; // await params
+
   try {
     const session = await getServerSession(authOptions);
     
@@ -20,8 +22,6 @@ export async function PATCH(
     }
 
     const { action } = await request.json();
-    const eventId = params.id;
-    const registrationId = params.registrationId;
 
     if (!['approve', 'reject', 'waitlist'].includes(action)) {
       return NextResponse.json({

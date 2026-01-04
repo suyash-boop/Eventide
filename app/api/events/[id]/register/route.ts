@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { authOptions } from '@/lib/auth'; // changed import
 import { prisma } from '@/lib/prisma';
 
 // Add interfaces for type safety
@@ -12,8 +12,10 @@ interface AnswerData {
 // POST /api/events/[id]/register - Register for event
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
+  const { id: eventId } = await context.params;
+
   try {
     const session = await getServerSession(authOptions);
     
@@ -24,7 +26,6 @@ export async function POST(
       }, { status: 401 });
     }
 
-    const eventId = params.id;
     const { answers } = await request.json();
 
     console.log('Registration attempt for event:', eventId);
@@ -189,8 +190,10 @@ export async function POST(
 // GET /api/events/[id]/register - Check registration status
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
+  const { id: eventId } = await context.params;
+
   try {
     const session = await getServerSession(authOptions);
     
@@ -200,8 +203,6 @@ export async function GET(
         error: 'Unauthorized'
       }, { status: 401 });
     }
-
-    const eventId = params.id;
 
     // Get user from database
     const user = await prisma.user.findUnique({

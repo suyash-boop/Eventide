@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { authOptions } from '@/lib/auth'; // changed import
 import { prisma } from '@/lib/prisma';
 
 // DELETE /api/registrations/[id] - Cancel event registration
 export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await context.params;
+
   try {
     const session = await getServerSession(authOptions);
     
@@ -18,7 +20,7 @@ export async function DELETE(
       }, { status: 401 });
     }
 
-    const registrationId = params.id;
+    const registrationId = id;
 
     // Get user from database
     const user = await prisma.user.findUnique({

@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import { CheckCircle, XCircle } from "lucide-react";
 
 // Dynamically import to avoid SSR issues
 const QrReader = dynamic(() => import("react-qr-reader"), { ssr: false });
@@ -26,7 +25,7 @@ export default function HostCheckIn({ eventId }: { eventId: string }) {
     }
   };
 
-  const handleError = (err: any) => {
+  const handleError = (err: Error) => {
     setFeedback("Camera error: " + err?.message);
   };
 
@@ -37,7 +36,7 @@ export default function HostCheckIn({ eventId }: { eventId: string }) {
         <QrReader
           onResult={(result, error) => {
             if (!!result) handleScan(result.getText());
-            if (!!error) handleError(error);
+            if (!!error) handleError(error as Error);
           }}
           constraints={{ facingMode: "environment" }}
           style={{ width: "100%" }}

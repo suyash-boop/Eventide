@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { prisma } from '@/lib/prisma';
+import { RegistrationStatus } from '@prisma/client'; // Import the enum from Prisma
 
 // PATCH /api/events/[id]/registrations/[registrationId] - Update registration status
 export async function PATCH(
@@ -89,17 +90,17 @@ export async function PATCH(
       }
     }
 
-    // Update registration status
-    const statusMap = {
-      approve: 'APPROVED',
-      reject: 'REJECTED',
-      waitlist: 'WAITLIST'
+    // Update registration status - Use Prisma enum types
+    const statusMap: Record<string, RegistrationStatus> = {
+      approve: RegistrationStatus.APPROVED,
+      reject: RegistrationStatus.REJECTED,
+      waitlist: RegistrationStatus.WAITLIST
     };
 
     const updatedRegistration = await prisma.registration.update({
       where: { id: registrationId },
       data: {
-        status: statusMap[action] as any,
+        status: statusMap[action],
         updatedAt: new Date()
       }
     });

@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import { QrReader } from "react-qr-reader";
-import { CheckCircle, XCircle } from "lucide-react";
 
 export default function HostCheckIn({ eventId }: { eventId: string }) {
   const [scanResult, setScanResult] = useState<string | null>(null);
@@ -31,7 +30,7 @@ export default function HostCheckIn({ eventId }: { eventId: string }) {
     }
   };
 
-  const handleError = (err: any) => {
+  const handleError = (err: Error) => {
     // Only show real camera errors
     if (err && err.message) {
       setFeedback("Camera error: " + err.message);
@@ -60,7 +59,7 @@ export default function HostCheckIn({ eventId }: { eventId: string }) {
         <QrReader
           onResult={(result, error) => {
             if (!!result) handleScan(result?.text);
-            if (!!error) handleError(error);
+            if (!!error) handleError(error as Error);
           }}
           constraints={{ facingMode: "environment" }}
           style={{ width: "100%", minHeight: 280 }}
@@ -76,8 +75,6 @@ export default function HostCheckIn({ eventId }: { eventId: string }) {
               : "text-gray-300"
           }`}
         >
-          {success === true && <CheckCircle className="w-5 h-5" />}
-          {success === false && <XCircle className="w-5 h-5" />}
           <span>{feedback}</span>
         </div>
       )}

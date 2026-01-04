@@ -8,10 +8,24 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar, MapPin, Users, Plus, Clock } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 
+// Add above your HomePage component
+interface RegisteredEvent {
+  id: string;
+  title: string;
+  description: string;
+  startDate: string;
+  endDate: string;
+  location: string;
+  eventType: string;
+  price: number;
+  checkedIn?: boolean;
+  status: "APPROVED" | "PENDING" | "REJECTED" | "WAITLIST";
+}
+
 export default function HomePage() {
     const { data: session, status } = useSession();
     const [activeTab, setActiveTab] = useState<"upcoming" | "past">("upcoming");
-    const [registeredEvents, setRegisteredEvents] = useState<any[]>([]);
+    const [registeredEvents, setRegisteredEvents] = useState<RegisteredEvent[]>([]);
     const [loadingEvents, setLoadingEvents] = useState(true);
     const [generatingPostId, setGeneratingPostId] = useState<string | null>(null);
     const [linkedInPosts, setLinkedInPosts] = useState<{ [eventId: string]: string }>({});
@@ -27,9 +41,9 @@ export default function HomePage() {
                 
                 if (data.success) {
                     // The API might return registrations with event data, so we need to extract events
-                    const events = data.data.registrations?.map((registration: any) => ({
-                        ...registration.event,
-                        status: registration.status
+                    const events = data.data.registrations?.map((registration: { event: RegisteredEvent; status: RegisteredEvent["status"] }) => ({
+                      ...registration.event,
+                      status: registration.status
                     })) || [];
                     setRegisteredEvents(events);
                 } else {
@@ -179,7 +193,7 @@ function EventCard({
   linkedInPosts,
   setLinkedInPosts,
 }: {
-  event: any;
+  event: RegisteredEvent;
   isPast?: boolean;
   generatingPostId?: string | null;
   setGeneratingPostId?: (id: string | null) => void;

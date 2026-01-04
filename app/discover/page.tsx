@@ -15,6 +15,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
 import Link from "next/link";
+import Image from "next/image";
 import { useEvents } from "@/hooks/useEvents";
 
 interface Event {
@@ -160,7 +161,7 @@ export default function DiscoverPage() {
             )}
             {searchQuery && (
               <Badge variant="secondary" className="bg-zinc-800 text-white border-zinc-700">
-                "{searchQuery}"
+                &quot;{searchQuery}&quot;
                 <button 
                   onClick={() => setSearchQuery("")}
                   className="ml-2 hover:text-red-400"
@@ -266,10 +267,12 @@ function EventCard({ event }: { event: Event }) {
       {/* Event Image */}
       <div className="relative h-48 bg-zinc-800/50">
         {event.image ? (
-          <img 
+          <Image 
             src={event.image} 
             alt={event.title}
-            className="w-full h-full object-cover"
+            fill
+            className="object-cover"
+            sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">

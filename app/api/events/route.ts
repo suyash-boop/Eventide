@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { prisma } from '@/lib/prisma';
+import { Prisma } from '@prisma/client';
+
+// Add interface for question data
+interface QuestionData {
+  id?: string;
+  text: string;
+  type: string;
+  required: boolean;
+  options?: string[];
+  order?: number;
+}
 
 // POST /api/events - Create new event
 export async function POST(request: NextRequest) {
@@ -120,7 +131,7 @@ export async function POST(request: NextRequest) {
       if (questions && questions.length > 0) {
         console.log('Creating questions:', questions);
         
-        const questionData = questions.map((q: any, index: number) => ({
+        const questionData = (questions as QuestionData[]).map((q: QuestionData, index: number) => ({
           id: q.id || `q_${Date.now()}_${index}`,
           eventId: event.id,
           text: q.text,
@@ -195,8 +206,8 @@ export async function GET(request: NextRequest) {
     
     const skip = (page - 1) * limit;
 
-    // Build where clause
-    const where: any = {
+    // Build where clause using Prisma types
+    const where: Prisma.EventWhereInput = {
       isPublic: true, // Only show public events
       startDate: {
         gte: new Date() // Only show future events
@@ -224,8 +235,8 @@ export async function GET(request: NextRequest) {
       where.eventType = eventType;
     }
 
-    // Build orderBy clause
-    let orderBy: any;
+    // Build orderBy clause using Prisma types
+    let orderBy: Prisma.EventOrderByWithRelationInput;
     switch (sortBy) {
       case 'popular':
         orderBy = { attendeeCount: 'desc' };

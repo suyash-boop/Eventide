@@ -3,6 +3,16 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { prisma } from '@/lib/prisma';
 
+// Add interface for question data
+interface QuestionData {
+  id: string;
+  text: string;
+  type: string;
+  required: boolean;
+  options: string[];
+  order: number;
+}
+
 // PUT /api/events/[id]/questions - Update event questions
 export async function PUT(
   request: NextRequest,
@@ -61,7 +71,7 @@ export async function PUT(
 
       // Create new questions if provided
       if (questions && questions.length > 0) {
-        const questionData = questions.map((q: any) => {
+        const questionData = questions.map((q: QuestionData) => {
           console.log('Processing question:', q);
           
           return {

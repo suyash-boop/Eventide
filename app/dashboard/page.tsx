@@ -34,7 +34,7 @@ export default function DashboardPage() {
   };
 
   // Fetch user's events
-  const { events: allEvents, loading, error } = useEvents({
+  const { events: allEvents, loading } = useEvents({
     // In real app, filter by organizerId
     page: 1,
     limit: 50
@@ -371,7 +371,7 @@ export default function DashboardPage() {
               <CardContent className="text-center py-16">
                 <Users className="w-16 h-16 text-gray-600 mx-auto mb-4" />
                 <h3 className="text-xl font-semibold text-gray-400 mb-2">No registrations yet</h3>
-                <p className="text-gray-500 mb-6">Browse events and register for ones you're interested in</p>
+                <p className="text-gray-500 mb-6">Browse events and register for ones you&apos;re interested in</p>
                 <Button asChild className="bg-white text-black hover:bg-gray-200">
                   <Link href="/discover">Browse Events</Link>
                 </Button>

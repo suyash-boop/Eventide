@@ -3,6 +3,12 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { prisma } from '@/lib/prisma';
 
+// Add interfaces for type safety
+interface AnswerData {
+  questionId: string;
+  answer: string;
+}
+
 // POST /api/events/[id]/register - Register for event
 export async function POST(
   request: NextRequest,
@@ -98,7 +104,7 @@ export async function POST(
 
     // Validate required questions
     if (event.questions && event.questions.length > 0) {
-      const answersMap = new Map(answers?.map((a: any) => [a.questionId, a.answer]) || []);
+      const answersMap = new Map((answers as AnswerData[])?.map((a: AnswerData) => [a.questionId, a.answer]) || []);
       
       for (const question of event.questions) {
         if (question.required) {
@@ -128,9 +134,9 @@ export async function POST(
 
       // Create answers if provided - Use registrationAnswer instead of answer
       if (answers && answers.length > 0) {
-        const answerData = answers
-          .filter((answer: any) => answer.answer && answer.answer.trim() !== '')
-          .map((answer: any) => ({
+        const answerData = (answers as AnswerData[])
+          .filter((answer: AnswerData) => answer.answer && answer.answer.trim() !== '')
+          .map((answer: AnswerData) => ({
             registrationId: registration.id,
             questionId: answer.questionId,
             answer: answer.answer.trim()

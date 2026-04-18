@@ -99,6 +99,7 @@ export async function GET(
       createdAt: registration.createdAt.toISOString(),
       updatedAt: registration.updatedAt.toISOString(),
       user: registration.user,
+      checkedIn: registration.checkedIn,
       answers: registration.answers.map(answer => ({
         id: answer.id,
         answer: answer.answer,

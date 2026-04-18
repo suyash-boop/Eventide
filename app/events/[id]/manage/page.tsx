@@ -63,6 +63,15 @@ import Link from "next/link";
 import QuestionManager from "@/components/QuestionManager";
 import HostCheckIn from "../HostCheckIn";
 
+interface Question {
+  id: string;
+  text: string;
+  type: 'TEXT' | 'EMAIL' | 'PHONE' | 'TEXTAREA' | 'SELECT' | 'RADIO' | 'CHECKBOX';
+  required: boolean;
+  options?: string[];
+  order: number;
+}
+
 interface Event {
   id: string;
   title: string;
@@ -74,7 +83,7 @@ interface Event {
   eventType: string;
   category: string;
   attendeeCount: number;
-  maxAttendees?: number;
+  maxAttendees?: number | null;
   price: number;
   organizerId: string;
   image?: string;
@@ -871,13 +880,15 @@ export default function EventManagePage({ params }: EventManagePageProps) {
               <CardContent className="p-6">
                 <div className="flex flex-col md:flex-row gap-4">
                   <div className="flex-1">
-                    <Input
-                      placeholder="Search by name or email..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="bg-zinc-800/50 border-zinc-700 text-white"
-                      icon={<Search className="w-4 h-4" />}
-                    />
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+                      <Input
+                        placeholder="Search by name or email..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="bg-zinc-800/50 border-zinc-700 pl-10 text-white"
+                      />
+                    </div>
                   </div>
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
                     <SelectTrigger className="w-full md:w-48 bg-zinc-800/50 border-zinc-700 text-white">
@@ -1164,7 +1175,7 @@ export default function EventManagePage({ params }: EventManagePageProps) {
                     Make sure the QR code is clearly visible in the camera.
                   </div>
                   <div className="w-full flex justify-center">
-                    <HostCheckIn eventId={event.id} />
+                    <HostCheckIn eventId={event.id} onCheckedIn={fetchEventData} />
                   </div>
                 </div>
               </CardContent>

@@ -9,6 +9,7 @@ type HostCheckInProps = {
 
 export default function HostCheckIn({ eventId, onCheckedIn }: HostCheckInProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
   const checkingRef = useRef(false);
   const lastScanRef = useRef<string | null>(null);
@@ -19,6 +20,7 @@ export default function HostCheckIn({ eventId, onCheckedIn }: HostCheckInProps) 
   const [success, setSuccess] = useState<boolean | null>(null);
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
+  const [scanStatus, setScanStatus] = useState("Starting camera...");
   const [email, setEmail] = useState("");
 
   useEffect(() => {
@@ -71,6 +73,9 @@ export default function HostCheckIn({ eventId, onCheckedIn }: HostCheckInProps) 
       controlsRef.current?.stop();
       controlsRef.current = null;
 
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+
       if (videoRef.current) {
         videoRef.current.srcObject = null;
       }
@@ -90,24 +95,44 @@ export default function HostCheckIn({ eventId, onCheckedIn }: HostCheckInProps) 
         }
 
         const reader = new BrowserQRCodeReader(undefined, {
-          delayBetweenScanAttempts: 500,
+          delayBetweenScanAttempts: 400,
           delayBetweenScanSuccess: 1200,
+          tryPlayVideoTimeout: 10000,
         });
 
-        const controls = await reader.decodeFromConstraints(
-          {
-            video: { facingMode: { ideal: "environment" } },
-            audio: false,
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: "environment" },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
           },
-          video,
-          (result) => {
-            const value = result?.getText();
-            if (value && value !== lastScanRef.current) {
-              lastScanRef.current = value;
-              void checkInCode(value);
-            }
+          audio: false,
+        });
+
+        if (cancelled) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        streamRef.current = stream;
+        video.srcObject = stream;
+        await video.play();
+
+        if (cancelled) return;
+
+        setCameraReady(true);
+        setScanStatus("Looking for QR code...");
+        setFeedback(null);
+        setSuccess(null);
+
+        const controls = await reader.decodeFromVideoElement(video, (result) => {
+          const value = result?.getText();
+          if (value && value !== lastScanRef.current) {
+            lastScanRef.current = value;
+            setScanStatus("QR found. Checking in...");
+            void checkInCode(value);
           }
-        );
+        });
 
         if (cancelled) {
           controls.stop();
@@ -115,14 +140,12 @@ export default function HostCheckIn({ eventId, onCheckedIn }: HostCheckInProps) 
         }
 
         controlsRef.current = controls;
-        setCameraReady(true);
-        setFeedback(null);
-        setSuccess(null);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Could not open camera.";
         setFeedback(`Camera error: ${message}`);
         setSuccess(false);
         setCameraReady(false);
+        setScanStatus("Camera unavailable");
         stopCamera();
       }
     };
@@ -132,6 +155,7 @@ export default function HostCheckIn({ eventId, onCheckedIn }: HostCheckInProps) 
     return () => {
       cancelled = true;
       setCameraReady(false);
+      setScanStatus("Starting camera...");
       stopCamera();
     };
   }, [checkInCode]);
@@ -174,6 +198,9 @@ export default function HostCheckIn({ eventId, onCheckedIn }: HostCheckInProps) 
           playsInline
           className="h-full w-full object-cover"
         />
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div className="h-44 w-44 rounded-lg border-2 border-white/80 shadow-[0_0_0_9999px_rgba(0,0,0,0.25)]" />
+        </div>
         {!cameraReady && (
           <div className="absolute inset-0 flex items-center justify-center bg-black text-sm text-gray-400">
             Starting camera...
@@ -181,7 +208,7 @@ export default function HostCheckIn({ eventId, onCheckedIn }: HostCheckInProps) 
         )}
       </div>
       <p className="text-center text-xs text-gray-500">
-        If the camera does not open, allow camera access in your browser and use localhost or HTTPS.
+        {scanStatus}
       </p>
       {feedback && (
         <div

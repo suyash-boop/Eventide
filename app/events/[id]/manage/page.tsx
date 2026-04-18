@@ -526,8 +526,8 @@ export default function EventManagePage({ params }: EventManagePageProps) {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid grid-cols-4 w-full max-w-md bg-zinc-800/50">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsList className="grid grid-cols-5 w-full max-w-2xl bg-zinc-800/50">
+            <TabsTrigger value="details">Overview</TabsTrigger>
             <TabsTrigger value="guests">Guests</TabsTrigger>
             <TabsTrigger value="questions">Questions</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
@@ -1073,7 +1073,7 @@ export default function EventManagePage({ params }: EventManagePageProps) {
                                           className="bg-green-600 hover:bg-green-700 text-white flex-1"
                                         >
                                           <UserCheck className="w-4 h-4 mr-2" />
-                                          Approve
+                                          Approved
                                         </Button>
                                         <Button
                                           variant="outline"

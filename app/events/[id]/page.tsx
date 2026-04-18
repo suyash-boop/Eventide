@@ -510,7 +510,7 @@ export default function EventDetailPage({ params }: EventDetailPageProps) {
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Registration Card */}
-            <Card className="bg-zinc-900/40 border-zinc-800/50 sticky top-6">
+            <Card className="bg-zinc-900/40 border-zinc-800/50">
               <CardContent className="p-6">
                 <div className="space-y-4">
                   <div className="text-center">

@@ -70,7 +70,9 @@ export default function MyEventsPage() {
       console.log('Fetching events for user:', session?.user?.email);
       
       // Fetch hosting events
-      const hostingResponse = await fetch('/api/user/events/hosting');
+      const hostingResponse = await fetch('/api/user/events/hosting', {
+        credentials: 'include',
+      });
       console.log('Hosting response status:', hostingResponse.status);
       
       if (hostingResponse.ok) {
@@ -83,7 +85,9 @@ export default function MyEventsPage() {
       }
 
       // Fetch registered events
-      const registrationsResponse = await fetch('/api/user/events/registrations');
+      const registrationsResponse = await fetch('/api/user/events/registrations', {
+        credentials: 'include',
+      });
       console.log('Registrations response status:', registrationsResponse.status);
       
       if (registrationsResponse.ok) {
